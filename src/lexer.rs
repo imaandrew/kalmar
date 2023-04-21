@@ -175,7 +175,7 @@ impl Lexer {
             '\n' => {
                 self.line += 1;
                 self.col = -1;
-                None
+                self.create_token(TokenKind::Newline)
             }
             _ if c.is_alphanumeric() => self.identifier(),
             _ => panic!(),
