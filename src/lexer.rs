@@ -5,7 +5,7 @@ use strum_macros::EnumString;
 #[derive(Debug)]
 pub struct Token {
     kind: TokenKind,
-    loc: (usize, usize),
+    loc: (usize, isize),
 }
 
 #[derive(Debug, EnumString)]
@@ -128,7 +128,7 @@ pub enum Number {
 pub struct Lexer {
     data: Vec<char>,
     pub tokens: Vec<Token>,
-    col: usize,
+    col: isize,
     line: usize,
     start: usize,
     curr: usize,
@@ -148,6 +148,7 @@ impl Lexer {
 
     pub fn lex(&mut self) {
         while !self.at_end() {
+            self.col += (self.curr - self.start) as isize;
             self.start = self.curr;
             if let Some(t) = self.lex_token() {
                 self.tokens.push(t);
@@ -165,7 +166,6 @@ impl Lexer {
                 let x = format!("{}{}", c, self.peek());
                 if let Ok(kind) = TokenKind::from_str(&x) {
                     self.curr += 1;
-                    self.col += 1;
                     self.create_token(kind)
                 } else {
                     self.create_token(TokenKind::from_str(&c.to_string()).unwrap())
@@ -174,7 +174,7 @@ impl Lexer {
             ' ' | '\r' | '\t' => None,
             '\n' => {
                 self.line += 1;
-                self.col = 0;
+                self.col = -1;
                 None
             }
             _ if c.is_alphanumeric() => self.identifier(),
@@ -212,12 +212,10 @@ impl Lexer {
                 let ty = &text[t..];
                 let num = if base != 10 { &text[2..t] } else { &text[..t] };
                 (ty, num)
+            } else if base != 10 {
+                ("u32", &text[2..])
             } else {
-                if base != 10 {
-                    ("u32", &text[2..])
-                } else {
-                    ("u32", &text[..])
-                }
+                ("u32", &text[..])
             };
 
             let num = match size {
@@ -239,12 +237,11 @@ impl Lexer {
 
     fn next(&mut self) -> char {
         self.curr += 1;
-        self.col += 1;
         *self.data.get(self.curr - 1).unwrap()
     }
 
     fn peek(&self) -> char {
-        *self.data.get(self.curr).unwrap_or_else(|| &'\0')
+        *self.data.get(self.curr).unwrap_or(&'\0')
     }
 
     fn at_end(&self) -> bool {
