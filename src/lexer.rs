@@ -8,6 +8,12 @@ pub struct Token {
     loc: (usize, isize),
 }
 
+impl Token {
+    pub fn is_last(&self) -> bool {
+        matches!(self.kind, TokenKind::Eof)
+    }
+}
+
 #[derive(Debug, EnumString)]
 pub enum TokenKind {
     #[strum(serialize = "scr")]
@@ -128,7 +134,6 @@ pub enum Number {
 
 pub struct Lexer {
     data: Vec<char>,
-    pub tokens: Vec<Token>,
     col: isize,
     line: usize,
     start: usize,
@@ -139,7 +144,6 @@ impl Lexer {
     pub fn new(data: &str) -> Self {
         Lexer {
             data: data.chars().collect(),
-            tokens: vec![],
             col: 0,
             line: 0,
             start: 0,
@@ -147,44 +151,45 @@ impl Lexer {
         }
     }
 
-    pub fn lex(&mut self) {
-        while !self.at_end() {
+    pub fn lex(&mut self) -> Token {
+        if !self.at_end() {
             self.col += (self.curr - self.start) as isize;
             self.start = self.curr;
             if let Some(t) = self.lex_token() {
-                self.tokens.push(t);
+                return t;
             }
+            return self.lex();
         }
-        self.tokens.push(self.create_token(TokenKind::Eof).unwrap());
+        self.create_token(TokenKind::Eof)
     }
 
     fn lex_token(&mut self) -> Option<Token> {
         let c = self.next();
         match c {
             '(' | ')' | '{' | '}' | '[' | ']' | ':' | ',' | '_' | '#' => {
-                self.create_token(TokenKind::from_str(&c.to_string()).unwrap())
+                Some(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
             }
             '=' | '!' | '>' | '<' | '+' | '-' | '*' | '/' | '%' | '|' | '&' => {
                 let x = format!("{}{}", c, self.peek());
                 if let Ok(kind) = TokenKind::from_str(&x) {
                     self.curr += 1;
-                    self.create_token(kind)
+                    Some(self.create_token(kind))
                 } else {
-                    self.create_token(TokenKind::from_str(&c.to_string()).unwrap())
+                    Some(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
                 }
             }
             ' ' | '\r' | '\t' => None,
             '\n' => {
                 self.line += 1;
                 self.col = -1;
-                self.create_token(TokenKind::Newline)
+                Some(self.create_token(TokenKind::Newline))
             }
-            _ if c.is_alphanumeric() => self.identifier(),
+            _ if c.is_alphanumeric() => Some(self.identifier()),
             _ => panic!(),
         }
     }
 
-    fn identifier(&mut self) -> Option<Token> {
+    fn identifier(&mut self) -> Token {
         while self.peek().is_alphanumeric() || self.peek() == '_' || self.peek() == '.' {
             self.next();
         }
@@ -247,13 +252,13 @@ impl Lexer {
     }
 
     fn at_end(&self) -> bool {
-        self.curr == self.data.len()
+        self.curr >= self.data.len()
     }
 
-    fn create_token(&self, kind: TokenKind) -> Option<Token> {
-        Some(Token {
+    fn create_token(&self, kind: TokenKind) -> Token {
+        Token {
             kind,
             loc: (self.line, self.col),
-        })
+        }
     }
 }

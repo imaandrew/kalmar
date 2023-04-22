@@ -14,9 +14,15 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let cli = Cli::parse();
     let data: String = fs::read_to_string(cli.input_file)?.parse()?;
     let mut lexer = lexer::Lexer::new(&data);
-    lexer.lex();
 
-    println!("{:#?}", lexer.tokens);
+    loop {
+        let token = lexer.lex();
+        println!("{:?}", token);
+
+        if token.is_last() {
+            break;
+        }
+    }
 
     Ok(())
 }
