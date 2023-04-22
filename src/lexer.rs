@@ -115,6 +115,7 @@ pub enum TokenKind {
     Newline,
     #[strum(disabled)]
     Identifier(String),
+    Eof,
 }
 
 #[derive(Debug)]
@@ -154,6 +155,7 @@ impl Lexer {
                 self.tokens.push(t);
             }
         }
+        self.tokens.push(self.create_token(TokenKind::Eof).unwrap());
     }
 
     fn lex_token(&mut self) -> Option<Token> {
