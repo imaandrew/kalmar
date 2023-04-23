@@ -4,8 +4,9 @@ use strum_macros::EnumString;
 
 #[derive(Debug)]
 pub struct Token {
-    kind: TokenKind,
-    loc: (usize, isize),
+    pub kind: TokenKind,
+    pub val: Option<Literal>,
+    pub loc: (usize, isize),
 }
 
 impl Token {
@@ -14,7 +15,7 @@ impl Token {
     }
 }
 
-#[derive(Debug, EnumString)]
+#[derive(Debug, EnumString, PartialEq, Eq)]
 pub enum TokenKind {
     #[strum(serialize = "scr")]
     KwScr,
@@ -115,21 +116,39 @@ pub enum TokenKind {
     #[strum(serialize = "..")]
     Range,
     #[strum(disabled)]
-    Number(Number),
+    Number,
     #[strum(disabled)]
-    String(String),
+    String,
     Newline,
     #[strum(disabled)]
-    Identifier(String),
+    Identifier,
     Eof,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Number {
     Byte(u8),
     Short(u16),
     Integer(u32),
     Float(f32),
+}
+
+impl Number {
+    pub fn as_u32(&self) -> u32 {
+        match *self {
+            Number::Byte(x) => x as u32,
+            Number::Short(x) => x as u32,
+            Number::Integer(x) => x,
+            _ => panic!(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Literal {
+    Identifier(String),
+    Str(String),
+    Number(Number),
 }
 
 pub struct Lexer {
@@ -198,14 +217,19 @@ impl Lexer {
 
         if text.contains('.') {
             if let Ok(num) = text.parse() {
-                self.create_token(TokenKind::Number(Number::Float(num)));
+                self.create_token_literal(
+                    TokenKind::Number,
+                    Some(Literal::Number(Number::Float(num))),
+                );
             }
         }
 
         if text.chars().next().unwrap().is_numeric() {
             if text.len() < 3 {
-                return self
-                    .create_token(TokenKind::Number(Number::Integer(text.parse().unwrap())));
+                return self.create_token_literal(
+                    TokenKind::Number,
+                    Some(Literal::Number(Number::Integer(text.parse().unwrap()))),
+                );
             }
 
             let base = match &text[..2] {
@@ -232,14 +256,14 @@ impl Lexer {
                 _ => panic!(),
             };
 
-            return self.create_token(TokenKind::Number(num));
+            return self.create_token_literal(TokenKind::Number, Some(Literal::Number(num)));
         }
 
         if let Ok(kind) = TokenKind::from_str(&text) {
             return self.create_token(kind);
         };
 
-        self.create_token(TokenKind::Identifier(text))
+        self.create_token_literal(TokenKind::Identifier, Some(Literal::Identifier(text)))
     }
 
     fn next(&mut self) -> char {
@@ -251,14 +275,19 @@ impl Lexer {
         *self.data.get(self.curr).unwrap_or(&'\0')
     }
 
-    fn at_end(&self) -> bool {
+    pub fn at_end(&self) -> bool {
         self.curr >= self.data.len()
     }
 
     fn create_token(&self, kind: TokenKind) -> Token {
+        self.create_token_literal(kind, None)
+    }
+
+    fn create_token_literal(&self, kind: TokenKind, literal: Option<Literal>) -> Token {
         Token {
             kind,
             loc: (self.line, self.col),
+            val: literal,
         }
     }
 }
