@@ -89,7 +89,7 @@ impl Parser {
             _ => {
                 self.tokens.push(t);
                 0
-            },
+            }
         };
 
         let block = self.block();
