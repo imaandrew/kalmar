@@ -1,6 +1,7 @@
 use crate::lexer::{Lexer, Literal, Token, TokenKind};
 
-enum Stmt {
+#[derive(Debug)]
+pub enum Stmt {
     Script(String, Box<Stmt>),
     Block(Vec<Stmt>),
     Return,
@@ -26,11 +27,13 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) {
+    pub fn parse(&mut self) -> Vec<Stmt> {
         let mut stmts = vec![];
         while !self.lexer.at_end() {
             stmts.push(self.declaration());
         }
+
+        stmts
     }
 
     fn declaration(&mut self) -> Stmt {
@@ -52,6 +55,8 @@ impl Parser {
             self.assert(TokenKind::Newline);
         }
 
+        self.assert(TokenKind::RBrace);
+
         Stmt::Block(stmts)
     }
 
@@ -65,7 +70,7 @@ impl Parser {
             TokenKind::KwJump => self.jump_statement(),
             TokenKind::KwThread => self.thread_statement(),
             TokenKind::KwChildThread => self.child_thread_statement(),
-            _ => todo!(),
+            e => panic!("parsing not implemented for: {:?}", e),
         }
     }
 
@@ -78,8 +83,8 @@ impl Parser {
     }
 
     fn loop_statement(&mut self) -> Stmt {
-        let loop_count = match self.pop().val.unwrap() {
-            Literal::Number(num) => num.as_u32(),
+        let loop_count = match self.pop().val {
+            Some(Literal::Number(num)) => num.as_u32(),
             _ => 0,
         };
 
@@ -123,15 +128,17 @@ impl Parser {
         ret
     }
 
-    fn check(&mut self, kind: TokenKind) -> bool {
-        self.lexer.lex().kind == kind
-    }
-
     fn assert(&mut self, kind: TokenKind) {
-        assert_eq!(self.lexer.lex().kind, kind)
+        assert_eq!(self.pop().kind, kind)
     }
 
     fn skip_newlines(&mut self) {
-        while self.check(TokenKind::Newline) {}
+        loop {
+            let t = self.pop();
+            if t.kind != TokenKind::Newline {
+                self.tokens.push(t);
+                break;
+            }
+        }
     }
 }
