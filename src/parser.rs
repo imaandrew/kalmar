@@ -8,6 +8,9 @@ enum Stmt {
     BreakCase,
     Goto(String),
     Loop(u32, Box<Stmt>),
+    Jump(String),
+    Thread(Box<Stmt>),
+    ChildThread(Box<Stmt>),
 }
 
 pub struct Parser {
@@ -59,6 +62,9 @@ impl Parser {
             TokenKind::KwBreakCase => Stmt::BreakCase,
             TokenKind::KwGoto => self.goto_statement(),
             TokenKind::KwLoop => self.loop_statement(),
+            TokenKind::KwJump => self.jump_statement(),
+            TokenKind::KwThread => self.thread_statement(),
+            TokenKind::KwChildThread => self.child_thread_statement(),
             _ => todo!(),
         }
     }
@@ -80,6 +86,22 @@ impl Parser {
         let block = self.block();
 
         Stmt::Loop(loop_count, Box::new(block))
+    }
+
+    fn jump_statement(&mut self) -> Stmt {
+        let ident = self.consume(TokenKind::Identifier);
+        if let Literal::Identifier(string) = ident.val.unwrap() {
+            return Stmt::Jump(string);
+        }
+        panic!()
+    }
+
+    fn thread_statement(&mut self) -> Stmt {
+        Stmt::Thread(Box::new(self.block()))
+    }
+
+    fn child_thread_statement(&mut self) -> Stmt {
+        Stmt::ChildThread(Box::new(self.block()))
     }
 
     fn pop(&mut self) -> Token {
