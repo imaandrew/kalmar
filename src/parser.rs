@@ -83,9 +83,13 @@ impl Parser {
     }
 
     fn loop_statement(&mut self) -> Stmt {
-        let loop_count = match self.pop().val {
+        let t = self.pop();
+        let loop_count = match t.val {
             Some(Literal::Number(num)) => num.as_u32(),
-            _ => 0,
+            _ => {
+                self.tokens.push(t);
+                0
+            },
         };
 
         let block = self.block();
