@@ -15,7 +15,7 @@ impl Token {
     }
 }
 
-#[derive(Debug, EnumString, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, EnumString, PartialEq, Eq)]
 pub enum TokenKind {
     #[strum(serialize = "scr")]
     KwScr,
