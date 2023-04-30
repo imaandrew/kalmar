@@ -115,6 +115,8 @@ pub enum TokenKind {
     Hash,
     #[strum(serialize = "..")]
     Range,
+    #[strum(serialize = "Var")]
+    Var,
     #[strum(disabled)]
     Number,
     #[strum(disabled)]

@@ -17,6 +17,7 @@ pub enum Stmt {
 #[derive(Debug)]
 pub enum Expr {
     Int(u32),
+    Var(Box<Expr>),
     UnOp(UnOp, Box<Expr>),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
 }
@@ -27,6 +28,7 @@ enum ExprType {
     IfElse,
     Case,
     Assign,
+    VarIndex,
 }
 
 impl Expr {
@@ -242,6 +244,12 @@ impl Parser {
                     panic!("Cannot negate an equality");
                 }
                 Expr::UnOp(op, Box::new(right))
+            }
+            TokenKind::Var if expr_type != ExprType::VarIndex => {
+                self.assert(TokenKind::LBracket);
+                let val = self.expr(0, ExprType::VarIndex);
+                self.assert(TokenKind::RBracket);
+                Expr::Var(Box::new(val))
             }
             x => panic!("bad token: {:?}", x),
         };
