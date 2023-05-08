@@ -12,6 +12,7 @@ pub enum Stmt {
     Jump(String),
     Thread(Box<Stmt>),
     ChildThread(Box<Stmt>),
+    Expr(Expr),
 }
 
 #[derive(Debug)]
@@ -28,6 +29,7 @@ enum ExprType {
     IfElse,
     Case,
     Assign,
+    AssignExpr,
     VarIndex,
 }
 
@@ -62,7 +64,7 @@ impl TryFrom<TokenKind> for UnOp {
 impl UnOp {
     fn precedence(&self) -> u8 {
         match self {
-            Self::Plus | Self::Minus => 4,
+            Self::Plus | Self::Minus => 50,
         }
     }
 }
@@ -81,6 +83,11 @@ pub enum BinOp {
     Less,
     LessEq,
     Percent,
+    Eq,
+    PlusEq,
+    MinusEq,
+    StarEq,
+    SlashEq,
 }
 
 impl TryFrom<TokenKind> for BinOp {
@@ -100,6 +107,11 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::Less => Ok(Self::Less),
             TokenKind::LessEq => Ok(Self::LessEq),
             TokenKind::Percent => Ok(Self::Percent),
+            TokenKind::Eq => Ok(Self::Eq),
+            TokenKind::PlusEq => Ok(Self::PlusEq),
+            TokenKind::MinusEq => Ok(Self::MinusEq),
+            TokenKind::StarEq => Ok(Self::StarEq),
+            TokenKind::SlashEq => Ok(Self::SlashEq),
             e => Err(format!("Cannot convert {:?} to a BinOp", e)),
         }
     }
@@ -123,9 +135,16 @@ impl BinOp {
             | Self::Less
             | Self::LessEq
             | Self::Greater
-            | Self::GreaterEq => 1,
-            Self::Plus | Self::Minus => 2,
-            Self::Star | Self::Slash | Self::Percent => 3,
+            | Self::GreaterEq => 20,
+            Self::Plus | Self::Minus => 30,
+            Self::Star | Self::Slash | Self::Percent => 40,
+            Self::Eq | Self::PlusEq | Self::MinusEq | Self::StarEq | Self::SlashEq => {
+                if ty == ExprType::Assign {
+                    10
+                } else {
+                    panic!()
+                }
+            }
             _ => return None,
         };
 
@@ -180,7 +199,8 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Stmt {
-        match self.pop().kind {
+        let t = self.pop();
+        match t.kind {
             TokenKind::KwReturn => Stmt::Return,
             TokenKind::KwBreakLoop => Stmt::BreakLoop,
             TokenKind::KwBreakCase => Stmt::BreakCase,
@@ -189,6 +209,10 @@ impl Parser {
             TokenKind::KwJump => self.jump_statement(),
             TokenKind::KwThread => self.thread_statement(),
             TokenKind::KwChildThread => self.child_thread_statement(),
+            TokenKind::Var => {
+                self.tokens.push(t);
+                Stmt::Expr(self.expr(0, ExprType::Assign))
+            }
             e => panic!("parsing not implemented for: {:?}", e),
         }
     }
@@ -270,7 +294,11 @@ impl Parser {
                     break;
                 }
 
-                let right = self.expr(prec + 1, expr_type);
+                let right = if expr_type == ExprType::Assign {
+                    self.expr(prec - 1, ExprType::AssignExpr)
+                } else {
+                    self.expr(prec + 1, expr_type)
+                };
                 left = Expr::BinOp(op, Box::new(left), Box::new(right));
                 continue;
             }
@@ -280,6 +308,9 @@ impl Parser {
     }
 
     fn pop(&mut self) -> Token {
+        if self.tokens.len() > 1 {
+            panic!("YOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
+        }
         self.tokens.pop().unwrap_or_else(|| self.lexer.lex())
     }
 
