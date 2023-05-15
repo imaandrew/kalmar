@@ -13,6 +13,8 @@ pub enum Stmt {
     Thread(Box<Stmt>),
     ChildThread(Box<Stmt>),
     Expr(Expr),
+    Switch(Expr, Box<Stmt>),
+    CaseStmt(Expr, Box<Stmt>),
 }
 
 #[derive(Debug)]
@@ -23,7 +25,7 @@ pub enum Expr {
     BinOp(BinOp, Box<Expr>, Box<Expr>),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExprType {
     Loop,
     IfElse,
@@ -47,6 +49,12 @@ impl Expr {
 pub enum UnOp {
     Plus,
     Minus,
+    EqEq,
+    BangEq,
+    Greater,
+    GreaterEq,
+    Less,
+    LessEq,
 }
 
 impl TryFrom<TokenKind> for UnOp {
@@ -56,15 +64,32 @@ impl TryFrom<TokenKind> for UnOp {
         match value {
             TokenKind::Plus => Ok(Self::Plus),
             TokenKind::Minus => Ok(Self::Minus),
+            TokenKind::EqEq => Ok(Self::EqEq),
+            TokenKind::BangEq => Ok(Self::BangEq),
+            TokenKind::Greater => Ok(Self::Greater),
+            TokenKind::GreaterEq => Ok(Self::GreaterEq),
+            TokenKind::Less => Ok(Self::Less),
+            TokenKind::LessEq => Ok(Self::LessEq),
             e => Err(format!("Cannot convert {:?} to a UnOp", e)),
         }
     }
 }
 
 impl UnOp {
-    fn precedence(&self) -> u8 {
+    fn precedence(&self, ty: ExprType) -> u8 {
         match self {
             Self::Plus | Self::Minus => 50,
+            Self::EqEq
+            | Self::BangEq
+            | Self::Greater
+            | Self::GreaterEq
+            | Self::Less
+            | Self::LessEq
+                if ty == ExprType::Case =>
+            {
+                50
+            }
+            _ => panic!(),
         }
     }
 }
@@ -125,25 +150,15 @@ impl BinOp {
             | Self::Less
             | Self::LessEq
             | Self::Greater
-            | Self::GreaterEq
-                if ty != ExprType::IfElse =>
-            {
-                panic!("Cannot have comparison in loop expr")
+            | Self::GreaterEq => {
+                assert_ne!(ty, ExprType::IfElse);
+                20
             }
-            Self::EqEq
-            | Self::BangEq
-            | Self::Less
-            | Self::LessEq
-            | Self::Greater
-            | Self::GreaterEq => 20,
             Self::Plus | Self::Minus => 30,
             Self::Star | Self::Slash | Self::Percent => 40,
             Self::Eq | Self::PlusEq | Self::MinusEq | Self::StarEq | Self::SlashEq => {
-                if ty == ExprType::Assign {
-                    10
-                } else {
-                    panic!()
-                }
+                assert_eq!(ty, ExprType::Assign);
+                10
             }
             _ => return None,
         };
@@ -178,18 +193,21 @@ impl Parser {
         self.assert(TokenKind::KwScr);
         let ident = self.consume(TokenKind::Identifier);
         if let Literal::Identifier(string) = ident.val.unwrap() {
-            return Stmt::Script(string, Box::new(self.block()));
+            return Stmt::Script(string, Box::new(self.block(Self::statement)));
         }
         panic!()
     }
 
-    fn block(&mut self) -> Stmt {
+    fn block<F>(&mut self, stmt_func: F) -> Stmt
+    where
+        F: Fn(&mut Self) -> Stmt,
+    {
         self.assert(TokenKind::LBrace);
         self.skip_newlines();
         let mut stmts = vec![];
 
         while !self.peek(TokenKind::RBrace) {
-            stmts.push(self.statement());
+            stmts.push(stmt_func(self));
             self.assert(TokenKind::Newline);
         }
 
@@ -209,6 +227,7 @@ impl Parser {
             TokenKind::KwJump => self.jump_statement(),
             TokenKind::KwThread => self.thread_statement(),
             TokenKind::KwChildThread => self.child_thread_statement(),
+            TokenKind::KwSwitch => self.switch_statement(),
             TokenKind::Var => {
                 self.tokens.push(t);
                 Stmt::Expr(self.expr(0, ExprType::Assign))
@@ -228,7 +247,7 @@ impl Parser {
     fn loop_statement(&mut self) -> Stmt {
         let loop_count = self.expr(0, ExprType::Loop);
 
-        let block = self.block();
+        let block = self.block(Self::statement);
 
         Stmt::Loop(loop_count, Box::new(block))
     }
@@ -242,11 +261,25 @@ impl Parser {
     }
 
     fn thread_statement(&mut self) -> Stmt {
-        Stmt::Thread(Box::new(self.block()))
+        Stmt::Thread(Box::new(self.block(Self::statement)))
     }
 
     fn child_thread_statement(&mut self) -> Stmt {
-        Stmt::ChildThread(Box::new(self.block()))
+        Stmt::ChildThread(Box::new(self.block(Self::statement)))
+    }
+
+    fn switch_statement(&mut self) -> Stmt {
+        let val = self.expr(0, ExprType::Loop);
+        let block = self.block(Self::case_statement);
+
+        Stmt::Switch(val, Box::new(block))
+    }
+
+    fn case_statement(&mut self) -> Stmt {
+        self.assert(TokenKind::KwCase);
+        let case = self.expr(0, ExprType::Case);
+        let block = self.block(Self::statement);
+        Stmt::CaseStmt(case, Box::new(block))
     }
 
     fn expr(&mut self, min_prec: u8, expr_type: ExprType) -> Expr {
@@ -263,10 +296,22 @@ impl Parser {
             }
             TokenKind::Plus | TokenKind::Minus => {
                 let op = UnOp::try_from(tok.kind).unwrap();
-                let right = self.expr(op.precedence(), expr_type);
+                let right = self.expr(op.precedence(expr_type), expr_type);
                 if right.get_bin_op() == Some(BinOp::EqEq) {
                     panic!("Cannot negate an equality");
                 }
+                Expr::UnOp(op, Box::new(right))
+            }
+            TokenKind::EqEq
+            | TokenKind::BangEq
+            | TokenKind::Greater
+            | TokenKind::GreaterEq
+            | TokenKind::Less
+            | TokenKind::LessEq
+                if expr_type == ExprType::Case =>
+            {
+                let op = UnOp::try_from(tok.kind).unwrap();
+                let right = self.expr(op.precedence(expr_type), expr_type);
                 Expr::UnOp(op, Box::new(right))
             }
             TokenKind::Var if expr_type != ExprType::VarIndex => {
@@ -277,6 +322,10 @@ impl Parser {
             }
             x => panic!("bad token: {:?}", x),
         };
+
+        if expr_type == ExprType::Case {
+            return left;
+        }
 
         loop {
             let t = self.pop();
