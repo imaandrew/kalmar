@@ -23,6 +23,7 @@ pub enum Expr {
     Var(Box<Expr>),
     UnOp(UnOp, Box<Expr>),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
+    Default,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,7 +88,7 @@ impl UnOp {
             | Self::LessEq
                 if ty == ExprType::Case =>
             {
-                50
+                20
             }
             _ => panic!(),
         }
@@ -113,6 +114,9 @@ pub enum BinOp {
     MinusEq,
     StarEq,
     SlashEq,
+    Or,
+    And,
+    Default,
 }
 
 impl TryFrom<TokenKind> for BinOp {
@@ -137,6 +141,9 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::MinusEq => Ok(Self::MinusEq),
             TokenKind::StarEq => Ok(Self::StarEq),
             TokenKind::SlashEq => Ok(Self::SlashEq),
+            TokenKind::KwAnd => Ok(Self::And),
+            TokenKind::KwOr => Ok(Self::Or),
+            TokenKind::KwDefault => Ok(Self::Default),
             e => Err(format!("Cannot convert {:?} to a BinOp", e)),
         }
     }
@@ -154,12 +161,14 @@ impl BinOp {
                 assert_ne!(ty, ExprType::IfElse);
                 20
             }
-            Self::Plus | Self::Minus => 30,
-            Self::Star | Self::Slash | Self::Percent => 40,
+            Self::Plus | Self::Minus => 40,
+            Self::Star | Self::Slash | Self::Percent => 50,
             Self::Eq | Self::PlusEq | Self::MinusEq | Self::StarEq | Self::SlashEq => {
                 assert_eq!(ty, ExprType::Assign);
                 10
             }
+            Self::Default => 10,
+            Self::Or | Self::And => 30,
             _ => return None,
         };
 
@@ -276,12 +285,17 @@ impl Parser {
     }
 
     fn case_statement(&mut self) -> Stmt {
-        self.assert(TokenKind::KwCase);
-        let case = self.expr(0, ExprType::Case);
+        let case = match self.pop().kind {
+            TokenKind::KwCase => self.expr(0, ExprType::Case),
+            TokenKind::KwDefault => Expr::Default,
+            _ => panic!(),
+        };
         let block = self.block(Self::statement);
+
         Stmt::CaseStmt(case, Box::new(block))
     }
 
+    //TODO: check to make sure case and/or exprs are only when type is ==
     fn expr(&mut self, min_prec: u8, expr_type: ExprType) -> Expr {
         let tok = self.pop();
         let mut left = match tok.kind {
@@ -322,10 +336,6 @@ impl Parser {
             }
             x => panic!("bad token: {:?}", x),
         };
-
-        if expr_type == ExprType::Case {
-            return left;
-        }
 
         loop {
             let t = self.pop();
