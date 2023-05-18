@@ -15,7 +15,6 @@ pub enum Stmt {
     Expr(Expr),
     Switch(Expr, Box<Stmt>),
     CaseStmt(Expr, Box<Stmt>),
-    FuncCall(String, Vec<Expr>),
 }
 
 #[derive(Debug)]
