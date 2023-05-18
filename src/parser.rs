@@ -266,7 +266,7 @@ impl Parser {
             TokenKind::KwSwitch => self.switch_statement(),
             TokenKind::Identifier => {
                 self.tokens.push(t);
-                Stmt::Expr(self.expr(0, ExprType::Loop))
+                Stmt::Expr(self.expr(0, ExprType::Assign))
             }
             e => panic!("parsing not implemented for: {:?}", e),
         }
