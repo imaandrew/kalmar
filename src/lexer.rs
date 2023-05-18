@@ -13,6 +13,18 @@ impl Token {
     pub fn is_last(&self) -> bool {
         matches!(self.kind, TokenKind::Eof)
     }
+
+    pub fn get_ident(&self) -> String {
+        if let Token {
+            kind: TokenKind::Identifier,
+            val: Some(Literal::Identifier(s)),
+            loc: _,
+        } = self
+        {
+            return s.to_string();
+        }
+        panic!("{:?}", self);
+    }
 }
 
 #[derive(Copy, Clone, Debug, EnumString, PartialEq, Eq)]
@@ -205,7 +217,7 @@ impl Lexer {
                 self.col = -1;
                 Some(self.create_token(TokenKind::Newline))
             }
-            _ if c.is_alphanumeric() => Some(self.identifier()),
+            _ if c.is_alphanumeric() || c == '_' => Some(self.identifier()),
             _ => panic!(),
         }
     }

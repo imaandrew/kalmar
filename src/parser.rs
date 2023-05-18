@@ -15,6 +15,7 @@ pub enum Stmt {
     Expr(Expr),
     Switch(Expr, Box<Stmt>),
     CaseStmt(Expr, Box<Stmt>),
+    FuncCall(String, Vec<Expr>),
 }
 
 #[derive(Debug)]
@@ -239,7 +240,17 @@ impl Parser {
             TokenKind::KwSwitch => self.switch_statement(),
             TokenKind::Var => {
                 self.tokens.push(t);
-                Stmt::Expr(self.expr(0, ExprType::Assign))
+                Stmt::Expr(self.expr(0, ExprType::Assign).unwrap())
+            }
+            TokenKind::Identifier => {
+                let next = self.pop();
+                match next.kind {
+                    TokenKind::LParen => {
+                        self.tokens.push(t);
+                        self.function_call_statement()
+                    }
+                    _ => todo!(),
+                }
             }
             e => panic!("parsing not implemented for: {:?}", e),
         }
@@ -254,7 +265,7 @@ impl Parser {
     }
 
     fn loop_statement(&mut self) -> Stmt {
-        let loop_count = self.expr(0, ExprType::Loop);
+        let loop_count = self.expr(0, ExprType::Loop).unwrap();
 
         let block = self.block(Self::statement);
 
@@ -278,7 +289,7 @@ impl Parser {
     }
 
     fn switch_statement(&mut self) -> Stmt {
-        let val = self.expr(0, ExprType::Loop);
+        let val = self.expr(0, ExprType::Loop).unwrap();
         let block = self.block(Self::case_statement);
 
         Stmt::Switch(val, Box::new(block))
@@ -286,7 +297,7 @@ impl Parser {
 
     fn case_statement(&mut self) -> Stmt {
         let case = match self.pop().kind {
-            TokenKind::KwCase => self.expr(0, ExprType::Case),
+            TokenKind::KwCase => self.expr(0, ExprType::Case).unwrap(),
             TokenKind::KwDefault => Expr::Default,
             _ => panic!(),
         };
@@ -295,8 +306,26 @@ impl Parser {
         Stmt::CaseStmt(case, Box::new(block))
     }
 
+    fn function_call_statement(&mut self) -> Stmt {
+        let func = self.pop().get_ident();
+
+        let mut args = vec![];
+
+        while self.kind() != TokenKind::RParen {
+            args.push(self.expr(0, ExprType::Loop).unwrap());
+            if self.kind() != TokenKind::Comma {
+                break;
+            }
+            self.consume(TokenKind::Comma);
+        }
+
+        self.consume(TokenKind::RParen);
+
+        Stmt::FuncCall(func, args)
+    }
+
     //TODO: check to make sure case and/or exprs are only when type is ==
-    fn expr(&mut self, min_prec: u8, expr_type: ExprType) -> Expr {
+    fn expr(&mut self, min_prec: u8, expr_type: ExprType) -> Option<Expr> {
         let tok = self.pop();
         let mut left = match tok.kind {
             TokenKind::Number => match tok.val.unwrap() {
@@ -304,13 +333,13 @@ impl Parser {
                 x => panic!("bad literal: {:?}", x),
             },
             TokenKind::LParen => {
-                let left = self.expr(0, expr_type);
+                let left = self.expr(0, expr_type).unwrap();
                 self.assert(TokenKind::RParen);
                 left
             }
             TokenKind::Plus | TokenKind::Minus => {
                 let op = UnOp::try_from(tok.kind).unwrap();
-                let right = self.expr(op.precedence(expr_type), expr_type);
+                let right = self.expr(op.precedence(expr_type), expr_type).unwrap();
                 if right.get_bin_op() == Some(BinOp::EqEq) {
                     panic!("Cannot negate an equality");
                 }
@@ -325,16 +354,17 @@ impl Parser {
                 if expr_type == ExprType::Case =>
             {
                 let op = UnOp::try_from(tok.kind).unwrap();
-                let right = self.expr(op.precedence(expr_type), expr_type);
+                let right = self.expr(op.precedence(expr_type), expr_type).unwrap();
                 Expr::UnOp(op, Box::new(right))
             }
             TokenKind::Var if expr_type != ExprType::VarIndex => {
                 self.assert(TokenKind::LBracket);
-                let val = self.expr(0, ExprType::VarIndex);
+                let val = self.expr(0, ExprType::VarIndex).unwrap();
                 self.assert(TokenKind::RBracket);
                 Expr::Var(Box::new(val))
             }
-            x => panic!("bad token: {:?}", x),
+            _ => return None,
+            //x => panic!("bad token: {:?}", x),
         };
 
         loop {
@@ -354,16 +384,16 @@ impl Parser {
                 }
 
                 let right = if expr_type == ExprType::Assign {
-                    self.expr(prec - 1, ExprType::AssignExpr)
+                    self.expr(prec - 1, ExprType::AssignExpr).unwrap()
                 } else {
-                    self.expr(prec + 1, expr_type)
+                    self.expr(prec + 1, expr_type).unwrap()
                 };
                 left = Expr::BinOp(op, Box::new(left), Box::new(right));
                 continue;
             }
             break;
         }
-        left
+        Some(left)
     }
 
     fn pop(&mut self) -> Token {
@@ -371,6 +401,13 @@ impl Parser {
             panic!("YOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
         }
         self.tokens.pop().unwrap_or_else(|| self.lexer.lex())
+    }
+
+    fn kind(&mut self) -> TokenKind {
+        let t = self.pop();
+        let kind = t.kind;
+        self.tokens.push(t);
+        kind
     }
 
     fn consume(&mut self, kind: TokenKind) -> Token {
