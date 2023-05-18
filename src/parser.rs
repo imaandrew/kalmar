@@ -20,10 +20,11 @@ pub enum Stmt {
 
 #[derive(Debug)]
 pub enum Expr {
-    Int(u32),
-    Var(Box<Expr>),
+    Identifier(Literal),
+    Array(Box<Expr>, Box<Expr>),
     UnOp(UnOp, Box<Expr>),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
+    FuncCall(Box<Expr>, Vec<Expr>),
     Default,
 }
 
@@ -41,7 +42,7 @@ impl Expr {
     fn get_bin_op(&self) -> Option<BinOp> {
         match self {
             Expr::BinOp(op, _, _) => Some(*op),
-            Expr::Int(_) => None,
+            Expr::Identifier(_) => None,
             _ => panic!("{:?} does not have a binary operator", self),
         }
     }
@@ -177,6 +178,32 @@ impl BinOp {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum PostOp {
+    LParen,
+    LBracket,
+}
+
+impl TryFrom<TokenKind> for PostOp {
+    type Error = String;
+
+    fn try_from(value: TokenKind) -> Result<Self, Self::Error> {
+        match value {
+            TokenKind::LParen => Ok(Self::LParen),
+            TokenKind::LBracket => Ok(Self::LBracket),
+            e => Err(format!("Cannot convert {:?} to a PostOp", e)),
+        }
+    }
+}
+
+impl PostOp {
+    fn precedence(&self) -> u8 {
+        match self {
+            Self::LBracket | Self::LParen => 60,
+        }
+    }
+}
+
 pub struct Parser {
     lexer: Lexer,
     tokens: Vec<Token>,
@@ -238,19 +265,9 @@ impl Parser {
             TokenKind::KwThread => self.thread_statement(),
             TokenKind::KwChildThread => self.child_thread_statement(),
             TokenKind::KwSwitch => self.switch_statement(),
-            TokenKind::Var => {
-                self.tokens.push(t);
-                Stmt::Expr(self.expr(0, ExprType::Assign).unwrap())
-            }
             TokenKind::Identifier => {
-                let next = self.pop();
-                match next.kind {
-                    TokenKind::LParen => {
-                        self.tokens.push(t);
-                        self.function_call_statement()
-                    }
-                    _ => todo!(),
-                }
+                self.tokens.push(t);
+                Stmt::Expr(self.expr(0, ExprType::Loop))
             }
             e => panic!("parsing not implemented for: {:?}", e),
         }
@@ -265,7 +282,7 @@ impl Parser {
     }
 
     fn loop_statement(&mut self) -> Stmt {
-        let loop_count = self.expr(0, ExprType::Loop).unwrap();
+        let loop_count = self.expr(0, ExprType::Loop);
 
         let block = self.block(Self::statement);
 
@@ -289,7 +306,7 @@ impl Parser {
     }
 
     fn switch_statement(&mut self) -> Stmt {
-        let val = self.expr(0, ExprType::Loop).unwrap();
+        let val = self.expr(0, ExprType::Loop);
         let block = self.block(Self::case_statement);
 
         Stmt::Switch(val, Box::new(block))
@@ -297,7 +314,7 @@ impl Parser {
 
     fn case_statement(&mut self) -> Stmt {
         let case = match self.pop().kind {
-            TokenKind::KwCase => self.expr(0, ExprType::Case).unwrap(),
+            TokenKind::KwCase => self.expr(0, ExprType::Case),
             TokenKind::KwDefault => Expr::Default,
             _ => panic!(),
         };
@@ -306,40 +323,22 @@ impl Parser {
         Stmt::CaseStmt(case, Box::new(block))
     }
 
-    fn function_call_statement(&mut self) -> Stmt {
-        let func = self.pop().get_ident();
-
-        let mut args = vec![];
-
-        while self.kind() != TokenKind::RParen {
-            args.push(self.expr(0, ExprType::Loop).unwrap());
-            if self.kind() != TokenKind::Comma {
-                break;
-            }
-            self.consume(TokenKind::Comma);
-        }
-
-        self.consume(TokenKind::RParen);
-
-        Stmt::FuncCall(func, args)
-    }
-
     //TODO: check to make sure case and/or exprs are only when type is ==
-    fn expr(&mut self, min_prec: u8, expr_type: ExprType) -> Option<Expr> {
+    fn expr(&mut self, min_prec: u8, expr_type: ExprType) -> Expr {
         let tok = self.pop();
         let mut left = match tok.kind {
             TokenKind::Number => match tok.val.unwrap() {
-                Literal::Number(n) => Expr::Int(n.as_u32()),
+                Literal::Number(n) => Expr::Identifier(Literal::Number(n)),
                 x => panic!("bad literal: {:?}", x),
             },
             TokenKind::LParen => {
-                let left = self.expr(0, expr_type).unwrap();
+                let left = self.expr(0, expr_type);
                 self.assert(TokenKind::RParen);
                 left
             }
             TokenKind::Plus | TokenKind::Minus => {
                 let op = UnOp::try_from(tok.kind).unwrap();
-                let right = self.expr(op.precedence(expr_type), expr_type).unwrap();
+                let right = self.expr(op.precedence(expr_type), expr_type);
                 if right.get_bin_op() == Some(BinOp::EqEq) {
                     panic!("Cannot negate an equality");
                 }
@@ -354,21 +353,44 @@ impl Parser {
                 if expr_type == ExprType::Case =>
             {
                 let op = UnOp::try_from(tok.kind).unwrap();
-                let right = self.expr(op.precedence(expr_type), expr_type).unwrap();
+                let right = self.expr(op.precedence(expr_type), expr_type);
                 Expr::UnOp(op, Box::new(right))
             }
-            TokenKind::Var if expr_type != ExprType::VarIndex => {
-                self.assert(TokenKind::LBracket);
-                let val = self.expr(0, ExprType::VarIndex).unwrap();
-                self.assert(TokenKind::RBracket);
-                Expr::Var(Box::new(val))
-            }
-            _ => return None,
-            //x => panic!("bad token: {:?}", x),
+            TokenKind::Identifier => Expr::Identifier(tok.val.unwrap()),
+            _ => panic!(),
         };
 
         loop {
             let t = self.pop();
+
+            if let Ok(op) = PostOp::try_from(t.kind) {
+                if op.precedence() < min_prec {
+                    self.tokens.push(t);
+                    break;
+                }
+
+                left = match op {
+                    PostOp::LBracket => {
+                        let right = self.expr(0, ExprType::VarIndex);
+                        self.assert(TokenKind::RBracket);
+                        Expr::Array(Box::new(left), Box::new(right))
+                    }
+                    PostOp::LParen => {
+                        let mut args = vec![];
+                        while self.kind() != TokenKind::RParen {
+                            args.push(self.expr(0, ExprType::Loop));
+                            if self.kind() != TokenKind::Comma {
+                                break;
+                            }
+                            self.assert(TokenKind::Comma);
+                        }
+                        self.assert(TokenKind::RParen);
+                        Expr::FuncCall(Box::new(left), args)
+                    }
+                };
+                continue;
+            }
+
             let op = match BinOp::try_from(t.kind) {
                 Ok(op) => op,
                 Err(_) => {
@@ -384,16 +406,16 @@ impl Parser {
                 }
 
                 let right = if expr_type == ExprType::Assign {
-                    self.expr(prec - 1, ExprType::AssignExpr).unwrap()
+                    self.expr(prec - 1, ExprType::AssignExpr)
                 } else {
-                    self.expr(prec + 1, expr_type).unwrap()
+                    self.expr(prec + 1, expr_type)
                 };
                 left = Expr::BinOp(op, Box::new(left), Box::new(right));
                 continue;
             }
             break;
         }
-        Some(left)
+        left
     }
 
     fn pop(&mut self) -> Token {
