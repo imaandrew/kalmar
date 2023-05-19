@@ -118,6 +118,7 @@ pub enum BinOp {
     Or,
     And,
     Default,
+    Comma,
 }
 
 impl TryFrom<TokenKind> for BinOp {
@@ -145,6 +146,7 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::KwAnd => Ok(Self::And),
             TokenKind::KwOr => Ok(Self::Or),
             TokenKind::KwDefault => Ok(Self::Default),
+            TokenKind::Comma => Ok(Self::Comma),
             e => Err(format!("Cannot convert {:?} to a BinOp", e)),
         }
     }
@@ -160,16 +162,17 @@ impl BinOp {
             | Self::Greater
             | Self::GreaterEq => {
                 assert_ne!(ty, ExprType::IfElse);
-                20
+                30
             }
-            Self::Plus | Self::Minus => 40,
-            Self::Star | Self::Slash | Self::Percent => 50,
+            Self::Plus | Self::Minus => 50,
+            Self::Star | Self::Slash | Self::Percent => 60,
             Self::Eq | Self::PlusEq | Self::MinusEq | Self::StarEq | Self::SlashEq => {
                 assert_eq!(ty, ExprType::Assign);
                 10
             }
             Self::Default => 10,
-            Self::Or | Self::And => 30,
+            Self::Or | Self::And => 40,
+            Self::Comma => 20,
             _ => return None,
         };
 
@@ -404,7 +407,7 @@ impl Parser {
                     break;
                 }
 
-                let right = if expr_type == ExprType::Assign {
+                let right = if matches!(op, BinOp::Eq | BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::SlashEq) {
                     self.expr(prec - 1, ExprType::AssignExpr)
                 } else {
                     self.expr(prec + 1, expr_type)
