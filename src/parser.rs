@@ -120,6 +120,7 @@ pub enum BinOp {
     And,
     Default,
     Comma,
+    Range,
 }
 
 impl TryFrom<TokenKind> for BinOp {
@@ -148,6 +149,7 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::KwOr => Ok(Self::Or),
             TokenKind::KwDefault => Ok(Self::Default),
             TokenKind::Comma => Ok(Self::Comma),
+            TokenKind::Range => Ok(Self::Range),
             e => Err(format!("Cannot convert {:?} to a BinOp", e)),
         }
     }
@@ -174,6 +176,7 @@ impl BinOp {
             Self::Default => 10,
             Self::Or | Self::And => 40,
             Self::Comma => 20,
+            Self::Range => 40,
             _ => return None,
         };
 
