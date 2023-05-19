@@ -7,6 +7,7 @@ pub enum Stmt {
     Return,
     BreakLoop,
     BreakCase,
+    Label(String),
     Goto(String),
     Loop(Expr, Box<Stmt>),
     Jump(String),
@@ -268,6 +269,10 @@ impl Parser {
             TokenKind::KwChildThread => self.child_thread_statement(),
             TokenKind::KwSwitch => self.switch_statement(),
             TokenKind::Identifier => {
+                if self.peek(TokenKind::Colon) {
+                    self.tokens.push(t);
+                    return self.label_statement();
+                }
                 self.tokens.push(t);
                 Stmt::Expr(self.expr(0, ExprType::Assign))
             }
@@ -281,6 +286,12 @@ impl Parser {
             return Stmt::Goto(string);
         }
         panic!()
+    }
+
+    fn label_statement(&mut self) -> Stmt {
+        let ident = self.consume(TokenKind::Identifier);
+        self.assert(TokenKind::Colon);
+        Stmt::Label(ident.get_ident())
     }
 
     fn loop_statement(&mut self) -> Stmt {
@@ -407,7 +418,10 @@ impl Parser {
                     break;
                 }
 
-                let right = if matches!(op, BinOp::Eq | BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::SlashEq) {
+                let right = if matches!(
+                    op,
+                    BinOp::Eq | BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::SlashEq
+                ) {
                     self.expr(prec - 1, ExprType::AssignExpr)
                 } else {
                     self.expr(prec + 1, expr_type)
@@ -421,9 +435,6 @@ impl Parser {
     }
 
     fn pop(&mut self) -> Token {
-        if self.tokens.len() > 1 {
-            panic!("YOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
-        }
         self.tokens.pop().unwrap_or_else(|| self.lexer.lex())
     }
 
