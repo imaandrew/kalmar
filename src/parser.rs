@@ -282,10 +282,7 @@ impl Parser {
 
     fn goto_statement(&mut self) -> Stmt {
         let ident = self.consume(TokenKind::Identifier);
-        if let Literal::Identifier(string) = ident.val.unwrap() {
-            return Stmt::Goto(string);
-        }
-        panic!()
+        Stmt::Goto(ident.get_ident())
     }
 
     fn label_statement(&mut self) -> Stmt {
