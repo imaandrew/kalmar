@@ -254,6 +254,7 @@ impl Parser {
         while !self.peek(TokenKind::RBrace) {
             stmts.push(stmt_func(self));
             self.assert(TokenKind::Newline);
+            self.skip_newlines();
         }
 
         self.assert(TokenKind::RBrace);
