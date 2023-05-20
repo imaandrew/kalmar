@@ -7,6 +7,7 @@ pub enum Stmt {
     Return,
     BreakLoop,
     BreakCase,
+    NewArray(Expr),
     Label(String),
     Goto(String),
     Loop(Expr, Box<Stmt>),
@@ -273,6 +274,7 @@ impl Parser {
             TokenKind::KwThread => self.thread_statement(),
             TokenKind::KwChildThread => self.child_thread_statement(),
             TokenKind::KwSwitch => self.switch_statement(),
+            TokenKind::KwNew => self.array_init_statement(),
             TokenKind::Identifier => {
                 if self.peek(TokenKind::Colon) {
                     self.tokens.push(t);
@@ -360,6 +362,10 @@ impl Parser {
         let block = self.block(Self::statement);
 
         Stmt::CaseStmt(case, Box::new(block))
+    }
+
+    fn array_init_statement(&mut self) -> Stmt {
+        Stmt::NewArray(self.expr(0, ExprType::Assign))
     }
 
     //TODO: check to make sure case and/or exprs are only when type is ==

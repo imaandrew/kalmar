@@ -61,6 +61,8 @@ pub enum TokenKind {
     KwDefault,
     #[strum(serialize = "jump")]
     KwJump,
+    #[strum(serialize = "new")]
+    KwNew,
     #[strum(serialize = "==")]
     EqEq,
     #[strum(serialize = "!=")]
