@@ -81,7 +81,7 @@ impl TryFrom<TokenKind> for UnOp {
 impl UnOp {
     fn precedence(&self, ty: ExprType) -> u8 {
         match self {
-            Self::Plus | Self::Minus => 50,
+            Self::Plus | Self::Minus => 80,
             Self::EqEq
             | Self::BangEq
             | Self::Greater
@@ -158,25 +158,21 @@ impl TryFrom<TokenKind> for BinOp {
 impl BinOp {
     fn precedence(&self, ty: ExprType) -> Option<u8> {
         let res = match self {
-            Self::EqEq
-            | Self::BangEq
-            | Self::Less
-            | Self::LessEq
-            | Self::Greater
-            | Self::GreaterEq => {
-                assert_ne!(ty, ExprType::IfElse);
-                30
-            }
-            Self::Plus | Self::Minus => 50,
-            Self::Star | Self::Slash | Self::Percent => 60,
+            Self::Or | Self::And | Self::Comma => 10,
             Self::Eq | Self::PlusEq | Self::MinusEq | Self::StarEq | Self::SlashEq => {
                 assert_eq!(ty, ExprType::Assign);
-                10
+                20
             }
-            Self::Default => 10,
-            Self::Or | Self::And => 40,
-            Self::Comma => 20,
-            Self::Range => 40,
+            Self::EqEq | Self::BangEq => {
+                30
+            }
+            Self::Less | Self::LessEq | Self::Greater | Self::GreaterEq => {
+                40
+            }
+            Self::Range => 50,
+            Self::Plus | Self::Minus => 60,
+            Self::Star | Self::Slash | Self::Percent => 70,
+
             _ => return None,
         };
 
