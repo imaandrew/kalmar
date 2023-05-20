@@ -61,6 +61,7 @@ pub enum UnOp {
     GreaterEq,
     Less,
     LessEq,
+    Addr,
 }
 
 impl TryFrom<TokenKind> for UnOp {
@@ -76,6 +77,7 @@ impl TryFrom<TokenKind> for UnOp {
             TokenKind::GreaterEq => Ok(Self::GreaterEq),
             TokenKind::Less => Ok(Self::Less),
             TokenKind::LessEq => Ok(Self::LessEq),
+            TokenKind::And => Ok(Self::Addr),
             e => Err(format!("Cannot convert {:?} to a UnOp", e)),
         }
     }
@@ -84,7 +86,7 @@ impl TryFrom<TokenKind> for UnOp {
 impl UnOp {
     fn precedence(&self, ty: ExprType) -> u8 {
         match self {
-            Self::Plus | Self::Minus => 80,
+            Self::Plus | Self::Minus | Self::Addr => 80,
             Self::EqEq
             | Self::BangEq
             | Self::Greater
@@ -171,7 +173,6 @@ impl BinOp {
             Self::Range => 50,
             Self::Plus | Self::Minus => 60,
             Self::Star | Self::Slash | Self::Percent => 70,
-
             _ => return None,
         };
 
@@ -200,7 +201,7 @@ impl TryFrom<TokenKind> for PostOp {
 impl PostOp {
     fn precedence(&self) -> u8 {
         match self {
-            Self::LBracket | Self::LParen => 60,
+            Self::LBracket | Self::LParen => 90,
         }
     }
 }
@@ -376,6 +377,14 @@ impl Parser {
                     panic!("Cannot negate an equality");
                 }
                 Expr::UnOp(op, Box::new(right))
+            }
+            TokenKind::And => {
+                let op = UnOp::try_from(tok.kind).unwrap();
+                let right = self.expr(op.precedence(expr_type), expr_type);
+                match right {
+                    Expr::Array(_, _) => Expr::UnOp(op, Box::new(right)),
+                    _ => panic!(),
+                }
             }
             TokenKind::EqEq
             | TokenKind::BangEq
