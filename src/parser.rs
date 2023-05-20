@@ -10,6 +10,9 @@ pub enum Stmt {
     Label(String),
     Goto(String),
     Loop(Expr, Box<Stmt>),
+    IfElse(Box<Stmt>, Vec<Stmt>),
+    If(Expr, Box<Stmt>),
+    Else(Option<Box<Stmt>>, Option<Box<Stmt>>),
     Jump(String),
     Thread(Box<Stmt>),
     ChildThread(Box<Stmt>),
@@ -163,12 +166,8 @@ impl BinOp {
                 assert_eq!(ty, ExprType::Assign);
                 20
             }
-            Self::EqEq | Self::BangEq => {
-                30
-            }
-            Self::Less | Self::LessEq | Self::Greater | Self::GreaterEq => {
-                40
-            }
+            Self::EqEq | Self::BangEq => 30,
+            Self::Less | Self::LessEq | Self::Greater | Self::GreaterEq => 40,
             Self::Range => 50,
             Self::Plus | Self::Minus => 60,
             Self::Star | Self::Slash | Self::Percent => 70,
@@ -263,6 +262,7 @@ impl Parser {
             TokenKind::KwBreakCase => Stmt::BreakCase,
             TokenKind::KwGoto => self.goto_statement(),
             TokenKind::KwLoop => self.loop_statement(),
+            TokenKind::KwIf => self.if_statement(),
             TokenKind::KwJump => self.jump_statement(),
             TokenKind::KwThread => self.thread_statement(),
             TokenKind::KwChildThread => self.child_thread_statement(),
@@ -296,6 +296,30 @@ impl Parser {
         let block = self.block(Self::statement);
 
         Stmt::Loop(loop_count, Box::new(block))
+    }
+
+    fn if_statement(&mut self) -> Stmt {
+        let if_expr = self.expr(0, ExprType::IfElse);
+        let if_block = self.block(Self::statement);
+        let if_stmt = Stmt::If(if_expr, Box::new(if_block));
+
+        let mut else_stmts = vec![];
+
+        while self.kind() == TokenKind::KwElse {
+            self.assert(TokenKind::KwElse);
+            if self.peek(TokenKind::KwIf) {
+                self.assert(TokenKind::KwIf);
+                let if_expr = self.expr(0, ExprType::IfElse);
+                let if_block = self.block(Self::statement);
+                let if_stmt = Stmt::If(if_expr, Box::new(if_block));
+                else_stmts.push(Stmt::Else(Some(Box::new(if_stmt)), None));
+            } else {
+                let else_block = self.block(Self::statement);
+                else_stmts.push(Stmt::Else(None, Some(Box::new(else_block))));
+            }
+        }
+
+        Stmt::IfElse(Box::new(if_stmt), else_stmts)
     }
 
     fn jump_statement(&mut self) -> Stmt {
