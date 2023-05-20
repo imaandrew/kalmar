@@ -62,6 +62,7 @@ pub enum UnOp {
     Less,
     LessEq,
     Addr,
+    Bang,
 }
 
 impl TryFrom<TokenKind> for UnOp {
@@ -78,6 +79,7 @@ impl TryFrom<TokenKind> for UnOp {
             TokenKind::Less => Ok(Self::Less),
             TokenKind::LessEq => Ok(Self::LessEq),
             TokenKind::And => Ok(Self::Addr),
+            TokenKind::Bang => Ok(Self::Bang),
             e => Err(format!("Cannot convert {:?} to a UnOp", e)),
         }
     }
@@ -86,7 +88,7 @@ impl TryFrom<TokenKind> for UnOp {
 impl UnOp {
     fn precedence(&self, ty: ExprType) -> u8 {
         match self {
-            Self::Plus | Self::Minus | Self::Addr => 80,
+            Self::Plus | Self::Minus | Self::Addr | Self::Bang => 90,
             Self::EqEq
             | Self::BangEq
             | Self::Greater
@@ -121,9 +123,10 @@ pub enum BinOp {
     MinusEq,
     StarEq,
     SlashEq,
-    Or,
     And,
-    Default,
+    KwOr,
+    KwAnd,
+    KwDefault,
     Comma,
     Range,
 }
@@ -150,9 +153,10 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::MinusEq => Ok(Self::MinusEq),
             TokenKind::StarEq => Ok(Self::StarEq),
             TokenKind::SlashEq => Ok(Self::SlashEq),
-            TokenKind::KwAnd => Ok(Self::And),
-            TokenKind::KwOr => Ok(Self::Or),
-            TokenKind::KwDefault => Ok(Self::Default),
+            TokenKind::KwAnd => Ok(Self::KwAnd),
+            TokenKind::KwOr => Ok(Self::KwOr),
+            TokenKind::KwDefault => Ok(Self::KwDefault),
+            TokenKind::And => Ok(Self::And),
             TokenKind::Comma => Ok(Self::Comma),
             TokenKind::Range => Ok(Self::Range),
             e => Err(format!("Cannot convert {:?} to a BinOp", e)),
@@ -163,16 +167,17 @@ impl TryFrom<TokenKind> for BinOp {
 impl BinOp {
     fn precedence(&self, ty: ExprType) -> Option<u8> {
         let res = match self {
-            Self::Or | Self::And | Self::Comma => 10,
+            Self::KwOr | Self::KwAnd | Self::Comma => 10,
             Self::Eq | Self::PlusEq | Self::MinusEq | Self::StarEq | Self::SlashEq => {
                 assert_eq!(ty, ExprType::Assign);
                 20
             }
-            Self::EqEq | Self::BangEq => 30,
-            Self::Less | Self::LessEq | Self::Greater | Self::GreaterEq => 40,
-            Self::Range => 50,
-            Self::Plus | Self::Minus => 60,
-            Self::Star | Self::Slash | Self::Percent => 70,
+            Self::And => 30,
+            Self::EqEq | Self::BangEq => 40,
+            Self::Less | Self::LessEq | Self::Greater | Self::GreaterEq => 50,
+            Self::Range => 60,
+            Self::Plus | Self::Minus => 70,
+            Self::Star | Self::Slash | Self::Percent => 80,
             _ => return None,
         };
 
@@ -201,7 +206,7 @@ impl TryFrom<TokenKind> for PostOp {
 impl PostOp {
     fn precedence(&self) -> u8 {
         match self {
-            Self::LBracket | Self::LParen => 90,
+            Self::LBracket | Self::LParen => 100,
         }
     }
 }
@@ -385,6 +390,11 @@ impl Parser {
                     Expr::Array(_, _) => Expr::UnOp(op, Box::new(right)),
                     _ => panic!(),
                 }
+            }
+            TokenKind::Bang => {
+                let op = UnOp::try_from(tok.kind).unwrap();
+                let right = self.expr(op.precedence(expr_type), expr_type);
+                Expr::UnOp(op, Box::new(right))
             }
             TokenKind::EqEq
             | TokenKind::BangEq
