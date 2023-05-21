@@ -227,8 +227,13 @@ impl Parser {
 
     pub fn parse(&mut self) -> Vec<Stmt> {
         let mut stmts = vec![];
+        self.skip_newlines();
         while !self.lexer.at_end() {
             stmts.push(self.declaration());
+            if !self.lexer.at_end() {
+                self.assert(TokenKind::Newline);
+            }
+            self.skip_newlines();
         }
 
         stmts
@@ -248,6 +253,7 @@ impl Parser {
         F: Fn(&mut Self) -> Stmt,
     {
         self.assert(TokenKind::LBrace);
+        self.assert(TokenKind::Newline);
         self.skip_newlines();
         let mut stmts = vec![];
 
