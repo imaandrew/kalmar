@@ -270,7 +270,7 @@ impl Parser {
             TokenKind::KwBreakCase => Stmt::BreakCase,
             TokenKind::KwGoto => self.goto_statement(),
             TokenKind::KwLoop => self.loop_statement(),
-            TokenKind::KwIf => self.if_statement(),
+            TokenKind::KwIf => self.if_else_statement(),
             TokenKind::KwJump => self.jump_statement(),
             TokenKind::KwThread => self.thread_statement(),
             TokenKind::KwChildThread => self.child_thread_statement(),
@@ -307,28 +307,36 @@ impl Parser {
         Stmt::Loop(loop_count, Box::new(block))
     }
 
-    fn if_statement(&mut self) -> Stmt {
-        let if_expr = self.expr(0, ExprType::IfElse);
-        let if_block = self.block(Self::statement);
-        let if_stmt = Stmt::If(if_expr, Box::new(if_block));
+    fn if_else_statement(&mut self) -> Stmt {
+        let if_stmt = self.if_statement();
 
         let mut else_stmts = vec![];
 
-        while self.kind() == TokenKind::KwElse {
-            self.assert(TokenKind::KwElse);
-            if self.peek(TokenKind::KwIf) {
-                self.assert(TokenKind::KwIf);
-                let if_expr = self.expr(0, ExprType::IfElse);
-                let if_block = self.block(Self::statement);
-                let if_stmt = Stmt::If(if_expr, Box::new(if_block));
-                else_stmts.push(Stmt::Else(Some(Box::new(if_stmt)), None));
-            } else {
-                let else_block = self.block(Self::statement);
-                else_stmts.push(Stmt::Else(None, Some(Box::new(else_block))));
-            }
+        self.skip_newlines();
+        while self.peek(TokenKind::KwElse) {
+            else_stmts.push(self.else_statement());
+            self.skip_newlines();
         }
 
         Stmt::IfElse(Box::new(if_stmt), else_stmts)
+    }
+
+    fn if_statement(&mut self) -> Stmt {
+        let if_expr = self.expr(0, ExprType::IfElse);
+        let if_block = self.block(Self::statement);
+        Stmt::If(if_expr, Box::new(if_block))
+    }
+
+    fn else_statement(&mut self) -> Stmt {
+        self.assert(TokenKind::KwElse);
+        if self.peek(TokenKind::KwIf) {
+            self.assert(TokenKind::KwIf);
+            let if_stmt = self.if_statement();
+            Stmt::Else(Some(Box::new(if_stmt)), None)
+        } else {
+            let else_block = self.block(Self::statement);
+            Stmt::Else(None, Some(Box::new(else_block)))
+        }
     }
 
     fn jump_statement(&mut self) -> Stmt {
