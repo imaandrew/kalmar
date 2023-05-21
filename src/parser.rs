@@ -242,10 +242,7 @@ impl Parser {
     fn declaration(&mut self) -> Stmt {
         self.assert(TokenKind::KwScr);
         let ident = self.consume(TokenKind::Identifier);
-        if let Literal::Identifier(string) = ident.val.unwrap() {
-            return Stmt::Script(string, Box::new(self.block(Self::statement)));
-        }
-        panic!()
+        Stmt::Script(ident.get_ident(), Box::new(self.block(Self::statement)))
     }
 
     fn block<F>(&mut self, stmt_func: F) -> Stmt
@@ -347,10 +344,7 @@ impl Parser {
 
     fn jump_statement(&mut self) -> Stmt {
         let ident = self.consume(TokenKind::Identifier);
-        if let Literal::Identifier(string) = ident.val.unwrap() {
-            return Stmt::Jump(string);
-        }
-        panic!()
+        Stmt::Jump(ident.get_ident())
     }
 
     fn thread_statement(&mut self) -> Stmt {
