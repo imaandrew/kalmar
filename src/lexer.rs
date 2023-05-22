@@ -178,7 +178,7 @@ impl Lexer {
         Lexer {
             data: data.chars().collect(),
             col: 0,
-            line: 0,
+            line: 1,
             start: 0,
             curr: 0,
         }
