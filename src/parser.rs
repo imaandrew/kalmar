@@ -243,7 +243,7 @@ impl Parser {
     fn declaration(&mut self) -> Stmt {
         self.assert(TokenKind::KwScr);
         let ident = self.consume(TokenKind::Identifier);
-        Stmt::Script(ident.get_ident(), Box::new(self.block(Self::statement)))
+        Stmt::Script(ident.val.unwrap(), Box::new(self.block(Self::statement)))
     }
 
     fn block<F>(&mut self, stmt_func: F) -> Stmt
@@ -294,13 +294,13 @@ impl Parser {
 
     fn goto_statement(&mut self) -> Stmt {
         let ident = self.consume(TokenKind::Identifier);
-        Stmt::Goto(ident.get_ident())
+        Stmt::Goto(ident.val.unwrap())
     }
 
     fn label_statement(&mut self) -> Stmt {
         let ident = self.consume(TokenKind::Identifier);
         self.assert(TokenKind::Colon);
-        Stmt::Label(ident.get_ident())
+        Stmt::Label(ident.val.unwrap())
     }
 
     fn loop_statement(&mut self) -> Stmt {
@@ -346,7 +346,7 @@ impl Parser {
 
     fn jump_statement(&mut self) -> Stmt {
         let ident = self.consume(TokenKind::Identifier);
-        Stmt::Jump(ident.get_ident())
+        Stmt::Jump(ident.val.unwrap())
     }
 
     fn thread_statement(&mut self) -> Stmt {
