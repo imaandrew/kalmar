@@ -315,10 +315,11 @@ impl Parser {
 
         let mut else_stmts = vec![];
 
-        self.skip_newlines();
-        while self.peek(TokenKind::KwElse) {
-            else_stmts.push(self.else_statement());
+        while self.peek_over_newlines(TokenKind::KwElse) {
             self.skip_newlines();
+            let tok = self.consume(TokenKind::KwElse);
+            self.tokens.push(tok);
+            else_stmts.push(self.else_statement());
         }
 
         Stmt::IfElse(Box::new(if_stmt), else_stmts)
@@ -511,6 +512,19 @@ impl Parser {
         let tok = self.pop();
         let ret = tok.kind == kind;
         self.tokens.push(tok);
+        ret
+    }
+
+    fn peek_over_newlines(&mut self, kind: TokenKind) -> bool {
+        let mut tok = self.pop();
+        let mut toks = vec![];
+        while tok.kind == TokenKind::Newline {
+            toks.push(tok);
+            tok = self.pop();
+        }
+        let ret = tok.kind == kind;
+        self.tokens.push(tok);
+        self.tokens.append(&mut toks);
         ret
     }
 
