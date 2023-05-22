@@ -215,6 +215,7 @@ impl PostOp {
 pub struct Parser {
     lexer: Lexer,
     tokens: Vec<Token>,
+    verbose: bool,
 }
 
 impl Parser {
@@ -222,11 +223,13 @@ impl Parser {
         Parser {
             lexer: Lexer::new(data),
             tokens: vec![],
+            verbose: false,
         }
     }
 
-    pub fn parse(&mut self) -> Vec<Stmt> {
+    pub fn parse(&mut self, verbose: bool) -> Vec<Stmt> {
         let mut stmts = vec![];
+        self.verbose = verbose;
         self.skip_newlines();
         while !self.lexer.at_end() {
             stmts.push(self.declaration());
@@ -490,7 +493,13 @@ impl Parser {
     }
 
     fn pop(&mut self) -> Token {
-        self.tokens.pop().unwrap_or_else(|| self.lexer.lex())
+        self.tokens.pop().unwrap_or_else(|| {
+            let x = self.lexer.lex();
+            if self.verbose {
+                println!("{:?}", x);
+            }
+            x
+        })
     }
 
     fn kind(&mut self) -> TokenKind {

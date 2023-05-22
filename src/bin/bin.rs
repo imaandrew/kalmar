@@ -1,5 +1,5 @@
 use clap::Parser;
-use kalmar::lexer;
+use kalmar::parser;
 use std::{error, fs, path::PathBuf};
 
 #[derive(Parser)]
@@ -8,21 +8,28 @@ struct Cli {
     /// Use this file as input
     #[clap(value_parser)]
     input_file: PathBuf,
+    #[arg(short, long)]
+    verbose: bool,
 }
 
-fn main() -> Result<(), Box<dyn error::Error>> {
+fn masin() -> Result<(), Box<dyn error::Error>> {
     let cli = Cli::parse();
     let data: String = fs::read_to_string(cli.input_file)?.parse()?;
-    let mut lexer = lexer::Lexer::new(&data);
+    let mut parser = parser::Parser::new(&data);
 
-    loop {
-        let token = lexer.lex();
-        println!("{:?}", token);
+    let stmts = parser.parse(cli.verbose);
 
-        if token.is_last() {
-            break;
-        }
-    }
+    println!("{:#?}", stmts);
 
     Ok(())
+}
+
+fn main() {
+    let cli = Cli::parse();
+    let data: String = fs::read_to_string("test.scr").unwrap().parse().unwrap();
+    let mut parser = parser::Parser::new(&data);
+
+    let stmts = parser.parse(cli.verbose);
+
+    println!("{:#?}", stmts);
 }
