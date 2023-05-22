@@ -125,8 +125,6 @@ pub enum TokenKind {
     Comma,
     #[strum(serialize = "_")]
     Underscore,
-    #[strum(serialize = "#")]
-    Hash,
     #[strum(serialize = "..")]
     Range,
     #[strum(disabled)]
