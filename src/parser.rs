@@ -1,20 +1,20 @@
-use crate::lexer::{Lexer, Literal, Token, TokenKind};
+use crate::lexer::{Lexer, Literal, Number, Token, TokenKind};
 
 #[derive(Debug)]
 pub enum Stmt {
-    Script(String, Box<Stmt>),
+    Script(Literal, Box<Stmt>),
     Block(Vec<Stmt>),
     Return,
     BreakLoop,
     BreakCase,
     NewArray(Expr),
-    Label(String),
-    Goto(String),
+    Label(Literal),
+    Goto(Literal),
     Loop(Expr, Box<Stmt>),
     IfElse(Box<Stmt>, Vec<Stmt>),
     If(Expr, Box<Stmt>),
     Else(Option<Box<Stmt>>, Option<Box<Stmt>>),
-    Jump(String),
+    Jump(Literal),
     Thread(Box<Stmt>),
     ChildThread(Box<Stmt>),
     Expr(Expr),
@@ -23,7 +23,7 @@ pub enum Stmt {
 }
 
 #[derive(Debug)]
-pub enum Expr {
+pub enum ExprEnum {
     Identifier(Literal),
     Array(Box<Expr>, Box<Expr>),
     UnOp(UnOp, Box<Expr>),
@@ -42,14 +42,21 @@ enum ExprType {
     VarIndex,
 }
 
-impl Expr {
-    fn get_bin_op(&self) -> Option<BinOp> {
-        match self {
-            Expr::BinOp(op, _, _) => Some(*op),
-            Expr::Identifier(_) => None,
-            _ => panic!("{:?} does not have a binary operator", self),
-        }
-    }
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum Type {
+    Int,
+    Float,
+    Bool,
+    Var,
+    Ident,
+    FuncResult,
+    None,
+}
+
+#[derive(Debug)]
+pub struct Expr {
+    pub expr: ExprEnum,
+    ty: Type,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -367,7 +374,10 @@ impl Parser {
     fn case_statement(&mut self) -> Stmt {
         let case = match self.pop().kind {
             TokenKind::KwCase => self.expr(0, ExprType::Case),
-            TokenKind::KwDefault => Expr::Default,
+            TokenKind::KwDefault => Expr {
+                expr: ExprEnum::Default,
+                ty: Type::None,
+            },
             _ => panic!(),
         };
         let block = self.block(Self::statement);
@@ -383,10 +393,22 @@ impl Parser {
     fn expr(&mut self, min_prec: u8, expr_type: ExprType) -> Expr {
         let tok = self.pop();
         let mut left = match tok.kind {
-            TokenKind::Number => match tok.val.unwrap() {
-                Literal::Number(n) => Expr::Identifier(Literal::Number(n)),
-                x => panic!("bad literal: {:?}", x),
-            },
+            TokenKind::Number => {
+                let lit = tok.val.unwrap();
+                match lit {
+                    Literal::Number(Number::Byte(_))
+                    | Literal::Number(Number::Short(_))
+                    | Literal::Number(Number::Integer(_)) => Expr {
+                        expr: ExprEnum::Identifier(lit),
+                        ty: Type::Int,
+                    },
+                    Literal::Number(Number::Float(_)) => Expr {
+                        expr: ExprEnum::Identifier(lit),
+                        ty: Type::Float,
+                    },
+                    x => panic!("bad literal: {:?}", x),
+                }
+            }
             TokenKind::LParen => {
                 let left = self.expr(0, expr_type);
                 self.assert(TokenKind::RParen);
@@ -395,23 +417,30 @@ impl Parser {
             TokenKind::Plus | TokenKind::Minus => {
                 let op = UnOp::try_from(tok.kind).unwrap();
                 let right = self.expr(op.precedence(expr_type), expr_type);
-                if right.get_bin_op() == Some(BinOp::EqEq) {
-                    panic!("Cannot negate an equality");
+                let t = right.ty;
+                assert!(matches!(t, Type::Int | Type::Float));
+                Expr {
+                    expr: ExprEnum::UnOp(op, Box::new(right)),
+                    ty: t,
                 }
-                Expr::UnOp(op, Box::new(right))
             }
             TokenKind::And => {
                 let op = UnOp::try_from(tok.kind).unwrap();
                 let right = self.expr(op.precedence(expr_type), expr_type);
-                match right {
-                    Expr::Array(_, _) => Expr::UnOp(op, Box::new(right)),
-                    _ => panic!(),
+                assert_eq!(right.ty, Type::Var);
+                Expr {
+                    expr: ExprEnum::UnOp(op, Box::new(right)),
+                    ty: Type::Var,
                 }
             }
             TokenKind::Bang => {
                 let op = UnOp::try_from(tok.kind).unwrap();
                 let right = self.expr(op.precedence(expr_type), expr_type);
-                Expr::UnOp(op, Box::new(right))
+                assert_eq!(right.ty, Type::Bool);
+                Expr {
+                    expr: ExprEnum::UnOp(op, Box::new(right)),
+                    ty: Type::Bool,
+                }
             }
             TokenKind::EqEq
             | TokenKind::BangEq
@@ -423,9 +452,17 @@ impl Parser {
             {
                 let op = UnOp::try_from(tok.kind).unwrap();
                 let right = self.expr(op.precedence(expr_type), expr_type);
-                Expr::UnOp(op, Box::new(right))
+                let right_ty = right.ty;
+                assert!(matches!(right_ty, Type::Int | Type::Float | Type::Var));
+                Expr {
+                    expr: ExprEnum::UnOp(op, Box::new(right)),
+                    ty: right_ty,
+                }
             }
-            TokenKind::Identifier => Expr::Identifier(tok.val.unwrap()),
+            TokenKind::Identifier => Expr {
+                expr: ExprEnum::Identifier(tok.val.unwrap()),
+                ty: Type::Ident,
+            },
             _ => panic!(),
         };
 
@@ -442,7 +479,10 @@ impl Parser {
                     PostOp::LBracket => {
                         let right = self.expr(0, ExprType::VarIndex);
                         self.assert(TokenKind::RBracket);
-                        Expr::Array(Box::new(left), Box::new(right))
+                        Expr {
+                            expr: ExprEnum::Array(Box::new(left), Box::new(right)),
+                            ty: Type::Var,
+                        }
                     }
                     PostOp::LParen => {
                         let mut args = vec![];
@@ -454,7 +494,10 @@ impl Parser {
                             self.assert(TokenKind::Comma);
                         }
                         self.assert(TokenKind::RParen);
-                        Expr::FuncCall(Box::new(left), args)
+                        Expr {
+                            expr: ExprEnum::FuncCall(Box::new(left), args),
+                            ty: Type::FuncResult,
+                        }
                     }
                 };
                 continue;
@@ -482,7 +525,72 @@ impl Parser {
                 } else {
                     self.expr(prec + 1, expr_type)
                 };
-                left = Expr::BinOp(op, Box::new(left), Box::new(right));
+                let ty = match op {
+                    BinOp::Plus | BinOp::Minus | BinOp::Star | BinOp::Slash => {
+                        assert!(
+                            matches!(left.ty, Type::Int | Type::Float)
+                                && matches!(right.ty, Type::Int | Type::Float)
+                        );
+                        if left.ty == Type::Float || right.ty == Type::Float {
+                            Type::Float
+                        } else {
+                            Type::Int
+                        }
+                    }
+                    BinOp::Percent => {
+                        assert!(left.ty == Type::Int && right.ty == Type::Int);
+                        Type::Int
+                    }
+                    BinOp::EqEq
+                    | BinOp::BangEq
+                    | BinOp::Greater
+                    | BinOp::GreaterEq
+                    | BinOp::Less
+                    | BinOp::LessEq => {
+                        assert!(
+                            matches!(left.ty, Type::Int | Type::Float | Type::Var)
+                                && matches!(right.ty, Type::Int | Type::Float | Type::Var)
+                        );
+                        Type::Bool
+                    }
+                    BinOp::Eq | BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::SlashEq => {
+                        assert!(
+                            left.ty == Type::Var
+                                && matches!(right.ty, Type::Int | Type::Float | Type::Var)
+                        );
+                        Type::None
+                    }
+                    BinOp::And => {
+                        assert!(matches!(left.ty, Type::Int | Type::Var) && right.ty == Type::Int);
+                        left.ty
+                    }
+                    BinOp::Comma => {
+                        assert!(
+                            matches!(left.ty, Type::Int | Type::Float | Type::Var | Type::Bool)
+                                && matches!(
+                                    right.ty,
+                                    Type::Int | Type::Float | Type::Var | Type::Bool
+                                )
+                        );
+                        Type::Var
+                    }
+                    BinOp::Range => {
+                        assert!(left.ty == Type::Int && right.ty == Type::Int);
+                        Type::None
+                    }
+                    BinOp::KwOr | BinOp::KwAnd => {
+                        assert!(
+                            matches!(left.ty, Type::Int | Type::Var)
+                                && matches!(right.ty, Type::Int | Type::Var)
+                        );
+                        Type::None
+                    }
+                    BinOp::KwDefault => panic!(),
+                };
+                left = Expr {
+                    expr: ExprEnum::BinOp(op, Box::new(left), Box::new(right)),
+                    ty,
+                };
                 continue;
             }
             break;
