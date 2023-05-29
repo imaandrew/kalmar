@@ -1,6 +1,6 @@
 use crate::{
     lexer::Literal,
-    parser::{BinOp, Expr, ExprEnum, Stmt},
+    parser::{BinOp, Expr, ExprEnum, Stmt, UnOp},
 };
 
 pub fn optimize_stmts(stmts: Vec<Stmt>) -> Vec<Stmt> {
@@ -32,6 +32,22 @@ fn collapse_stmt(stmt: Stmt) -> Stmt {
 
 fn collapse_expr(expr: Expr) -> Expr {
     let e = match &expr.expr {
+        ExprEnum::UnOp(op, e) => match op {
+            UnOp::Minus => match &e.expr {
+                ExprEnum::Identifier(Literal::Number(n)) => {
+                    ExprEnum::Identifier(Literal::Number(-*n))
+                }
+                _ => expr.expr,
+            },
+            UnOp::EqEq
+            | UnOp::BangEq
+            | UnOp::Greater
+            | UnOp::GreaterEq
+            | UnOp::Less
+            | UnOp::LessEq
+            | UnOp::Addr => ExprEnum::UnOp(*op, Box::new(collapse_expr(*e.clone()))),
+            UnOp::Bang => todo!(),
+        },
         ExprEnum::BinOp(op, l, r) => match op {
             BinOp::Plus => match (&l.expr, &r.expr) {
                 (
@@ -119,7 +135,19 @@ fn collapse_expr(expr: Expr) -> Expr {
             },
             _ => todo!(),
         },
-        _ => todo!(),
+        ExprEnum::FuncCall(f, a) => {
+            let mut args = vec![];
+
+            for arg in a {
+                args.push(collapse_expr(arg.clone()));
+            }
+
+            ExprEnum::FuncCall(f.clone(), args)
+        }
+        ExprEnum::Array(ident, index) => {
+            ExprEnum::Array(ident.clone(), Box::new(collapse_expr(*index.clone())))
+        }
+        _ => expr.expr,
     };
 
     Expr {

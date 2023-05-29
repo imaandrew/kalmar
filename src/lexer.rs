@@ -1,5 +1,5 @@
 use std::{
-    ops::{Add, BitAnd, Div, Mul, Rem, Sub},
+    ops::{Add, BitAnd, Div, Mul, Neg, Rem, Sub},
     str::FromStr,
 };
 
@@ -273,6 +273,19 @@ impl BitAnd for Number {
                     e => panic!("{}", e),
                 }
             }
+        }
+    }
+}
+
+impl Neg for Number {
+    type Output = Number;
+
+    fn neg(self) -> Self::Output {
+        match &self {
+            Number::Byte(x) => Number::Byte(x.wrapping_neg()),
+            Number::Short(x) => Number::Short(x.wrapping_neg()),
+            Number::Integer(x) => Number::Integer(x.wrapping_neg()),
+            Number::Float(x) => Number::Float(-x),
         }
     }
 }
