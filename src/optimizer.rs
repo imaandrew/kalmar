@@ -133,7 +133,7 @@ fn collapse_expr(expr: Expr) -> Expr {
                 ) => ExprEnum::Identifier(Literal::Number(*x & *y)),
                 _ => expr.expr,
             },
-            _ => todo!(),
+            _ => expr.expr,
         },
         ExprEnum::FuncCall(f, a) => {
             let mut args = vec![];
