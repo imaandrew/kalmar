@@ -70,6 +70,7 @@ impl Compiler {
         match expr.expr {
             ExprEnum::Identifier(lit) => match lit {
                 Literal::Number(n) => bin.push(n.as_u32()),
+                Literal::Identifier(i) => bin.push(*self.syms.get(&i).unwrap()),
                 _ => todo!(),
             },
             _ => todo!(),
