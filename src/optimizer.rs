@@ -17,13 +17,16 @@ fn collapse_stmt(stmt: Stmt) -> Stmt {
         Stmt::Block(s) => Stmt::Block(optimize_stmts(s)),
         Stmt::NewArray(e) => Stmt::NewArray(collapse_expr(e)),
         Stmt::Loop(e, s) => Stmt::Loop(collapse_expr(e), Box::new(collapse_stmt(*s))),
-        Stmt::Expr(e) => Stmt::Expr(collapse_expr(e)),
         Stmt::IfElse(i, e) => Stmt::IfElse(Box::new(collapse_stmt(*i)), optimize_stmts(e)),
         Stmt::If(e, s) => Stmt::If(collapse_expr(e), Box::new(collapse_stmt(*s))),
         Stmt::Else(Some(i), None) => Stmt::Else(Some(Box::new(collapse_stmt(*i))), None),
         Stmt::Else(None, Some(s)) => Stmt::Else(None, Some(Box::new(collapse_stmt(*s)))),
-        Stmt::BreakLoop => Stmt::BreakLoop,
-        e => panic!("{:?}", e),
+        Stmt::Thread(s) => Stmt::Thread(Box::new(collapse_stmt(*s))),
+        Stmt::ChildThread(s) => Stmt::ChildThread(Box::new(collapse_stmt(*s))),
+        Stmt::Expr(e) => Stmt::Expr(collapse_expr(e)),
+        Stmt::Switch(e, s) => Stmt::Switch(collapse_expr(e), Box::new(collapse_stmt(*s))),
+        Stmt::CaseStmt(e, s) => Stmt::CaseStmt(collapse_expr(e), Box::new(collapse_stmt(*s))),
+        s => s,
     }
 }
 
