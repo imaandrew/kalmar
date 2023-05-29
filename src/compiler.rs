@@ -77,7 +77,6 @@ impl Compiler {
                 let e = self.compile_expr(*expr);
                 assert_eq!(e.len(), 1);
                 match op {
-                    UnOp::Plus => bin.push(*e.first().unwrap()),
                     UnOp::Minus => bin.push(i32_to_u32(*e.first().unwrap() as i32)),
                     _ => todo!(),
                 }

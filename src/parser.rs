@@ -61,7 +61,6 @@ pub struct Expr {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum UnOp {
-    Plus,
     Minus,
     EqEq,
     BangEq,
@@ -78,7 +77,6 @@ impl TryFrom<TokenKind> for UnOp {
 
     fn try_from(value: TokenKind) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::Plus => Ok(Self::Plus),
             TokenKind::Minus => Ok(Self::Minus),
             TokenKind::EqEq => Ok(Self::EqEq),
             TokenKind::BangEq => Ok(Self::BangEq),
