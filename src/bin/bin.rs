@@ -1,5 +1,6 @@
 use clap::Parser;
 use kalmar::compiler;
+use kalmar::optimizer;
 use kalmar::parser;
 use std::{error, fs, path::PathBuf};
 
@@ -30,12 +31,15 @@ fn main() {
     let data: String = fs::read_to_string("test.scr").unwrap().parse().unwrap();
     let mut parser = parser::Parser::new(&data);
 
-    let stmts = parser.parse(cli.verbose);
+    let mut stmts = parser.parse(cli.verbose);
 
     println!("{:#?}", stmts);
 
-    let compiler = compiler::Compiler::new();
-    let code = compiler.compile(stmts);
+    let o_stmts = optimizer::optimize_stmts(stmts);
+    println!("{:#?}", o_stmts);
 
-    println!("{:?}", code);
+    //let compiler = compiler::Compiler::new();
+    //let code = compiler.compile(stmts);
+
+    //println!("{:?}", code);
 }

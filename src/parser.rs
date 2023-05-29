@@ -22,7 +22,7 @@ pub enum Stmt {
     CaseStmt(Expr, Box<Stmt>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ExprEnum {
     Identifier(Literal),
     Array(Box<Expr>, Box<Expr>),
@@ -43,7 +43,7 @@ enum ExprType {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-enum Type {
+pub enum Type {
     Int,
     Float,
     Bool,
@@ -53,10 +53,10 @@ enum Type {
     None,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Expr {
     pub expr: ExprEnum,
-    ty: Type,
+    pub ty: Type,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -94,7 +94,7 @@ impl TryFrom<TokenKind> for UnOp {
 impl UnOp {
     fn precedence(&self, ty: ExprType) -> u8 {
         match self {
-            Self::Plus | Self::Minus | Self::Addr | Self::Bang => 90,
+            Self::Minus | Self::Addr | Self::Bang => 90,
             Self::EqEq
             | Self::BangEq
             | Self::Greater

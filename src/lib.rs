@@ -1,5 +1,6 @@
 pub mod compiler;
 pub mod lexer;
+pub mod optimizer;
 pub mod parser;
 
 pub fn test() {
