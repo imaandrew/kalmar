@@ -1,4 +1,5 @@
 use clap::Parser;
+use kalmar::compiler;
 use kalmar::parser;
 use std::{error, fs, path::PathBuf};
 
@@ -32,4 +33,9 @@ fn main() {
     let stmts = parser.parse(cli.verbose);
 
     println!("{:#?}", stmts);
+
+    let compiler = compiler::Compiler::new();
+    let code = compiler.compile(stmts);
+
+    println!("{:?}", code);
 }
