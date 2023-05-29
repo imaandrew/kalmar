@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::lexer::Literal;
-use crate::parser::{BinOp, Expr, ExprEnum, Stmt};
+use crate::parser::{BinOp, Expr, ExprEnum, Stmt, UnOp};
 
 pub struct Compiler {
     syms: HashMap<String, u32>,
@@ -73,9 +73,22 @@ impl Compiler {
                 Literal::Identifier(i) => bin.push(*self.syms.get(&i).unwrap()),
                 _ => todo!(),
             },
+            ExprEnum::UnOp(op, expr) => {
+                let e = self.compile_expr(*expr);
+                assert_eq!(e.len(), 1);
+                match op {
+                    UnOp::Plus => bin.push(*e.first().unwrap()),
+                    UnOp::Minus => bin.push(i32_to_u32(*e.first().unwrap() as i32)),
+                    _ => todo!(),
+                }
+            }
             _ => todo!(),
         }
 
         bin
     }
+}
+
+fn i32_to_u32(int: i32) -> u32 {
+    u32::from_be_bytes(int.to_be_bytes())
 }
