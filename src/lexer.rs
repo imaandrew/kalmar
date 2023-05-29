@@ -151,7 +151,7 @@ impl Number {
             Number::Byte(x) => x as u32,
             Number::Short(x) => x as u32,
             Number::Integer(x) => x,
-            _ => panic!(),
+            Number::Float(x) => (x * 1024.0 - 230000000.0) as i32 as u32,
         }
     }
 }
