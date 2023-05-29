@@ -7,6 +7,12 @@ pub struct Compiler {
     syms: HashMap<String, u32>,
 }
 
+impl Default for Compiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Compiler {
     pub fn new() -> Self {
         Compiler {
