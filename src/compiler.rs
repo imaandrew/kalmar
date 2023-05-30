@@ -58,6 +58,42 @@ impl Compiler {
                 bin.push(6)
             }
             Stmt::BreakLoop => bin.push(7),
+            Stmt::IfElse(i, e) => {
+                bin.append(&mut self.compile_stmt(*i));
+                for expr in e {
+                    bin.append(&mut self.compile_stmt(expr));
+                }
+            }
+            Stmt::If(
+                Expr {
+                    expr: ExprEnum::BinOp(op, l, r),
+                    ty: _,
+                },
+                s,
+            ) => {
+                match op {
+                    BinOp::EqEq => bin.push(10),
+                    BinOp::BangEq => bin.push(11),
+                    BinOp::Less => bin.push(12),
+                    BinOp::Greater => bin.push(13),
+                    BinOp::LessEq => bin.push(14),
+                    BinOp::GreaterEq => bin.push(15),
+                    _ => panic!(),
+                }
+                bin.append(&mut self.compile_expr(*l));
+                bin.append(&mut self.compile_expr(*r));
+                bin.append(&mut self.compile_stmt(*s));
+                bin.push(0x13)
+            }
+            Stmt::Else(Some(i), None) => {
+                bin.push(0x12);
+                bin.append(&mut self.compile_stmt(*i))
+            }
+            Stmt::Else(None, Some(s)) => {
+                bin.push(0x12);
+                bin.append(&mut self.compile_stmt(*s));
+                bin.push(0x13)
+            }
             _ => todo!(),
         }
 
