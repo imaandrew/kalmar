@@ -291,7 +291,7 @@ impl Compiler {
                 }
             }
             ExprEnum::Default => bin.push(0x1c),
-            e => panic!("Not implemented {:?}", e),
+            ExprEnum::NewArray(_, _) => unreachable!(),
         }
 
         bin
