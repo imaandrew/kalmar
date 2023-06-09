@@ -152,7 +152,14 @@ impl Compiler {
                 bin.append(&mut self.compile_stmt(*s));
                 bin.push(0x59);
             }
-            e => panic!("Not implemented: {:?}", e),
+            Stmt::Jump(i) => {
+                bin.push(0x4a);
+                bin.push(match i {
+                    Literal::Number(n) => n.as_u32(),
+                    _ => todo!(),
+                });
+            }
+            Stmt::If(_, _) | Stmt::Else(_, _) => panic!(),
         }
 
         bin
