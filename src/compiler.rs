@@ -198,6 +198,48 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
+                BinOp::PlusEq => {
+                    if let ExprEnum::Identifier(Literal::Number(n)) = r.expr {
+                        bin.push(if n.is_float() { 0x2c } else { 0x27 });
+                    } else {
+                        bin.push(0x27);
+                    }
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::MinusEq => {
+                    if let ExprEnum::Identifier(Literal::Number(n)) = r.expr {
+                        bin.push(if n.is_float() { 0x2d } else { 0x28 });
+                    } else {
+                        bin.push(0x28);
+                    }
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::StarEq => {
+                    if let ExprEnum::Identifier(Literal::Number(n)) = r.expr {
+                        bin.push(if n.is_float() { 0x2e } else { 0x29 });
+                    } else {
+                        bin.push(0x29);
+                    }
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::SlashEq => {
+                    if let ExprEnum::Identifier(Literal::Number(n)) = r.expr {
+                        bin.push(if n.is_float() { 0x2f } else { 0x2a });
+                    } else {
+                        bin.push(0x2a);
+                    }
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::PercentEq => {
+                    bin.push(0x2b);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+
                 _ => panic!(),
             },
             ExprEnum::Array(ident, index) => {

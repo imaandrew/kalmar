@@ -157,6 +157,10 @@ impl Number {
             Number::Float(x) => (x * 1024.0 - 230000000.0) as i32 as u32,
         }
     }
+
+    pub fn is_float(&self) -> bool {
+        matches!(*self, Number::Float(_))
+    }
 }
 
 impl Add for Number {

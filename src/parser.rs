@@ -132,6 +132,7 @@ pub enum BinOp {
     MinusEq,
     StarEq,
     SlashEq,
+    PercentEq,
     And,
     KwOr,
     KwAnd,
@@ -161,6 +162,7 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::MinusEq => Ok(Self::MinusEq),
             TokenKind::StarEq => Ok(Self::StarEq),
             TokenKind::SlashEq => Ok(Self::SlashEq),
+            TokenKind::PercentEq => Ok(Self::PercentEq),
             TokenKind::KwAnd => Ok(Self::KwAnd),
             TokenKind::KwOr => Ok(Self::KwOr),
             TokenKind::KwDefault => Ok(Self::KwDefault),
@@ -176,7 +178,12 @@ impl BinOp {
     fn precedence(&self, ty: ExprType) -> Option<u8> {
         let res = match self {
             Self::KwOr | Self::KwAnd | Self::Comma => 10,
-            Self::Eq | Self::PlusEq | Self::MinusEq | Self::StarEq | Self::SlashEq => {
+            Self::Eq
+            | Self::PlusEq
+            | Self::MinusEq
+            | Self::StarEq
+            | Self::SlashEq
+            | Self::PercentEq => {
                 assert_eq!(ty, ExprType::Assign);
                 20
             }
@@ -541,7 +548,12 @@ impl Parser {
 
                 let right = if matches!(
                     op,
-                    BinOp::Eq | BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::SlashEq
+                    BinOp::Eq
+                        | BinOp::PlusEq
+                        | BinOp::MinusEq
+                        | BinOp::StarEq
+                        | BinOp::SlashEq
+                        | BinOp::PercentEq
                 ) {
                     self.expr(prec - 1, ExprType::AssignExpr)
                 } else if matches!(op, BinOp::KwAnd | BinOp::KwOr) {
@@ -592,6 +604,10 @@ impl Parser {
                             left.ty == Type::Var
                                 && matches!(right.ty, Type::Int | Type::Float | Type::Var)
                         );
+                        Type::None
+                    }
+                    BinOp::PercentEq => {
+                        assert!(left.ty == Type::Var && matches!(right.ty, Type::Int | Type::Var));
                         Type::None
                     }
                     BinOp::And => {
