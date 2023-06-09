@@ -138,6 +138,7 @@ impl Compiler {
                 bin.append(&mut self.compile_stmt(*s));
             }
             Stmt::BreakCase => bin.push(0x22),
+            Stmt::Expr(e) => bin.append(&mut self.compile_expr(e)),
             e => panic!("Not implemented: {:?}", e),
         }
 
@@ -192,10 +193,42 @@ impl Compiler {
 
                 bin.push(get_var(&ident, index));
             }
+            ExprEnum::FuncCall(func, args) => {
+                let addr = match func.expr {
+                    ExprEnum::Identifier(Literal::Identifier(i)) => self.get_func(&i).unwrap(),
+                    _ => panic!(),
+                };
+                bin.push(addr);
+                for arg in args {
+                    bin.append(&mut self.compile_expr(arg));
+                }
+            }
             e => panic!("Not implemented {:?}", e),
         }
 
         bin
+    }
+
+    fn get_func(&self, func: &str) -> Option<u32> {
+        match func {
+            "exec" => Some(0x44),
+            "exec_wait" => Some(0x46),
+            "bind" => Some(0x47),
+            "unbind" => Some(0x48),
+            "kill" => Some(0x49),
+            "set_priority" => Some(0x4b),
+            "set_timescale" => Some(0x4c),
+            "set_group" => Some(0x4d),
+            "bind_lock" => Some(0x4e),
+            "suspend_all" => Some(0x4f),
+            "resume_all" => Some(0x50),
+            "suspend_others" => Some(0x51),
+            "resume_others" => Some(0x52),
+            "suspend" => Some(0x53),
+            "resume" => Some(0x54),
+            "does_exist" => Some(0x55),
+            e => self.syms.get(e).copied(),
+        }
     }
 }
 
