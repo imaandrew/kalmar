@@ -67,24 +67,26 @@ impl Compiler {
                     bin.append(&mut self.compile_stmt(expr));
                 }
             }
-            Stmt::If(
-                Expr {
-                    expr: ExprEnum::BinOp(op, l, r),
-                    ty: _,
-                },
-                s,
-            ) => {
-                match op {
-                    BinOp::EqEq => bin.push(10),
-                    BinOp::BangEq => bin.push(11),
-                    BinOp::Less => bin.push(12),
-                    BinOp::Greater => bin.push(13),
-                    BinOp::LessEq => bin.push(14),
-                    BinOp::GreaterEq => bin.push(15),
+            Stmt::If(e, s) => {
+                match e.expr {
+                    ExprEnum::BinOp(_, _, _) => bin.append(&mut self.compile_expr(e)),
+                    ExprEnum::UnOp(UnOp::Bang, e) => {
+                        let mut e = self.compile_expr(*e);
+                        e[0] = match e[0] {
+                            0xa => 0xb,
+                            0xb => 0xa,
+                            0xc => 0xf,
+                            0xd => 0xe,
+                            0xe => 0xd,
+                            0xf => 0xc,
+                            0x10 => 0x11,
+                            0x11 => 0x10,
+                            _ => panic!(),
+                        };
+                        bin.append(&mut e);
+                    }
                     _ => panic!(),
                 }
-                bin.append(&mut self.compile_expr(*l));
-                bin.append(&mut self.compile_expr(*r));
                 bin.append(&mut self.compile_stmt(*s));
                 bin.push(0x13)
             }
@@ -158,7 +160,7 @@ impl Compiler {
                     _ => todo!(),
                 });
             }
-            Stmt::If(_, _) | Stmt::Else(_, _) => panic!(),
+            Stmt::Else(_, _) => panic!(),
         }
 
         bin
@@ -283,7 +285,42 @@ impl Compiler {
                     }
                     _ => panic!(),
                 },
-                _ => panic!(),
+                BinOp::EqEq => {
+                    bin.push(0xa);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::BangEq => {
+                    bin.push(0xb);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::Less => {
+                    bin.push(0xc);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::Greater => {
+                    bin.push(0xd);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::LessEq => {
+                    bin.push(0xe);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::GreaterEq => {
+                    bin.push(0xf);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::And => {
+                    bin.push(0x10);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                e => panic!("{:?}", e),
             },
             ExprEnum::Array(ident, index) => {
                 let ident = match ident.expr {

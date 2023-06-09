@@ -621,7 +621,7 @@ impl Parser {
                     }
                     BinOp::And => {
                         assert!(matches!(left.ty, Type::Int | Type::Var) && right.ty == Type::Int);
-                        left.ty
+                        Type::Bool
                     }
                     BinOp::Comma => {
                         assert!(

@@ -45,7 +45,7 @@ fn collapse_expr(expr: Expr) -> Expr {
             | UnOp::Less
             | UnOp::LessEq
             | UnOp::Addr => ExprEnum::UnOp(*op, Box::new(collapse_expr(*e.clone()))),
-            UnOp::Bang => todo!(),
+            UnOp::Bang => expr.expr,
         },
         ExprEnum::BinOp(op, l, r) => match op {
             BinOp::Plus => match (&l.expr, &r.expr) {
