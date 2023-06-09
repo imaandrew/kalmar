@@ -139,6 +139,16 @@ impl Compiler {
             }
             Stmt::BreakCase => bin.push(0x22),
             Stmt::Expr(e) => bin.append(&mut self.compile_expr(e)),
+            Stmt::Thread(s) => {
+                bin.push(0x56);
+                bin.append(&mut self.compile_stmt(*s));
+                bin.push(0x57);
+            }
+            Stmt::ChildThread(s) => {
+                bin.push(0x58);
+                bin.append(&mut self.compile_stmt(*s));
+                bin.push(0x59);
+            }
             e => panic!("Not implemented: {:?}", e),
         }
 
