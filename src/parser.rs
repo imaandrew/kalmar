@@ -488,9 +488,12 @@ impl Parser {
                 expr: ExprEnum::Identifier(tok.val.unwrap()),
                 ty: Type::Ident,
             },
-            TokenKind::KwNew => Expr {
-                expr: self.expr(min_prec, expr_type).expr,
-                ty: Type::NewArray,
+            TokenKind::KwNew => match self.expr(min_prec, expr_type).expr {
+                ExprEnum::Array(a, b) => Expr {
+                    expr: ExprEnum::NewArray(a, b),
+                    ty: Type::NewArray,
+                },
+                _ => panic!(),
             },
             _ => panic!(),
         };

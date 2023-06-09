@@ -238,7 +238,33 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-
+                BinOp::Eq => match r.expr {
+                    ExprEnum::Identifier(Literal::Number(n)) => {
+                        if n.is_float() {
+                            bin.push(0x26);
+                        } else {
+                            bin.push(0x24);
+                        }
+                        bin.append(&mut self.compile_expr(*l));
+                        bin.append(&mut self.compile_expr(*r));
+                    }
+                    ExprEnum::Array(_, _) => {
+                        bin.push(0x24);
+                        bin.append(&mut self.compile_expr(*l));
+                        bin.append(&mut self.compile_expr(*r));
+                    }
+                    ExprEnum::UnOp(UnOp::Addr, r) => {
+                        bin.push(0x25);
+                        bin.append(&mut self.compile_expr(*l));
+                        bin.append(&mut self.compile_expr(*r));
+                    }
+                    ExprEnum::NewArray(_, r) => {
+                        bin.push(0x3e);
+                        bin.append(&mut self.compile_expr(*r));
+                        bin.append(&mut self.compile_expr(*l));
+                    }
+                    _ => panic!(),
+                },
                 _ => panic!(),
             },
             ExprEnum::Array(ident, index) => {
