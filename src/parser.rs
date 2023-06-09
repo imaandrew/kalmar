@@ -370,6 +370,7 @@ impl Parser {
 
     fn if_statement(&mut self) -> Stmt {
         let if_expr = self.expr(0, ExprType::IfElse);
+        assert_eq!(if_expr.ty, Type::Bool);
         let if_block = self.block(Self::statement);
         Stmt::If(if_expr, Box::new(if_block))
     }
@@ -408,7 +409,15 @@ impl Parser {
 
     fn case_statement(&mut self) -> Stmt {
         let case = match self.pop().kind {
-            TokenKind::KwCase => self.expr(0, ExprType::Case),
+            TokenKind::KwCase => {
+                let case = self.expr(0, ExprType::Case);
+                match case.expr {
+                    ExprEnum::UnOp(op, _) => assert!(!matches!(op, UnOp::Minus | UnOp::Bang)),
+                    ExprEnum::BinOp(op, _, _) => assert!(matches!(op, BinOp::KwAnd | BinOp::KwOr)),
+                    e => panic!("{:?}", e),
+                }
+                case
+            }
             TokenKind::KwDefault => Expr {
                 expr: ExprEnum::Default,
                 ty: Type::None,

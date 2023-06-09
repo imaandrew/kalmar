@@ -81,11 +81,11 @@ impl Compiler {
                             0xf => 0xc,
                             0x10 => 0x11,
                             0x11 => 0x10,
-                            _ => panic!(),
+                            _ => unreachable!(),
                         };
                         bin.append(&mut e);
                     }
-                    _ => panic!(),
+                    _ => unreachable!(),
                 }
                 bin.append(&mut self.compile_stmt(*s));
                 bin.push(0x13)
@@ -116,7 +116,7 @@ impl Compiler {
                             UnOp::LessEq => bin.push(0x1a),
                             UnOp::GreaterEq => bin.push(0x1b),
                             UnOp::Addr => bin.push(0x10),
-                            e => panic!("{:?}", e),
+                            _ => unreachable!(),
                         }
                         bin.append(&mut self.compile_expr(*e));
                     }
@@ -137,7 +137,7 @@ impl Compiler {
                             bin.push(0x20);
                         }
                     }
-                    _ => bin.append(&mut self.compile_expr(e)),
+                    _ => unreachable!(),
                 }
                 bin.append(&mut self.compile_stmt(*s));
             }
@@ -160,7 +160,7 @@ impl Compiler {
                     _ => todo!(),
                 });
             }
-            Stmt::Else(_, _) => panic!(),
+            Stmt::Else(_, _) => unreachable!(),
         }
 
         bin
