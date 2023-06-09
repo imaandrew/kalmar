@@ -36,7 +36,10 @@ impl Compiler {
     fn compile_stmt(&self, stmt: Stmt) -> Vec<u32> {
         let mut bin = vec![];
         match stmt {
-            Stmt::Script(_, s) => bin.append(&mut self.compile_stmt(*s)),
+            Stmt::Script(_, s) => {
+                bin.append(&mut self.compile_stmt(*s));
+                bin.push(1);
+            }
             Stmt::Block(stmts) => {
                 for s in stmts {
                     bin.append(&mut self.compile_stmt(s))
