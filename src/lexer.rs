@@ -371,7 +371,7 @@ impl Lexer {
 
         if text.contains('.') {
             if let Ok(num) = text.parse() {
-                self.create_token_literal(
+                return self.create_token_literal(
                     TokenKind::Number,
                     Some(Literal::Number(Number::Float(num))),
                 );
