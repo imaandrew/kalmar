@@ -278,8 +278,7 @@ impl Compiler {
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
-                    ExprEnum::NewArray(_, r) => {
-                        bin.push(0x3e);
+                    ExprEnum::NewArray(_, _) => {
                         bin.append(&mut self.compile_expr(*r));
                         bin.append(&mut self.compile_expr(*l));
                     }
@@ -346,7 +345,10 @@ impl Compiler {
                 }
             }
             ExprEnum::Default => bin.push(0x1c),
-            ExprEnum::NewArray(_, _) => unreachable!(),
+            ExprEnum::NewArray(_, r) => {
+                bin.push(0x3e);
+                bin.append(&mut self.compile_expr(*r));
+            }
         }
 
         bin
