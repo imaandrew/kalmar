@@ -133,6 +133,8 @@ pub enum BinOp {
     StarEq,
     SlashEq,
     PercentEq,
+    OrEq,
+    AndEq,
     And,
     KwOr,
     KwAnd,
@@ -163,6 +165,8 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::StarEq => Ok(Self::StarEq),
             TokenKind::SlashEq => Ok(Self::SlashEq),
             TokenKind::PercentEq => Ok(Self::PercentEq),
+            TokenKind::OrEq => Ok(Self::OrEq),
+            TokenKind::AndEq => Ok(Self::AndEq),
             TokenKind::KwAnd => Ok(Self::KwAnd),
             TokenKind::KwOr => Ok(Self::KwOr),
             TokenKind::KwDefault => Ok(Self::KwDefault),
@@ -183,7 +187,9 @@ impl BinOp {
             | Self::MinusEq
             | Self::StarEq
             | Self::SlashEq
-            | Self::PercentEq => {
+            | Self::PercentEq
+            | Self::OrEq
+            | Self::AndEq => {
                 assert_eq!(ty, ExprType::Assign);
                 20
             }
@@ -609,7 +615,7 @@ impl Parser {
                         );
                         Type::None
                     }
-                    BinOp::PercentEq => {
+                    BinOp::PercentEq | BinOp::OrEq | BinOp::AndEq => {
                         assert!(left.ty == Type::Var && matches!(right.ty, Type::Int | Type::Var));
                         Type::None
                     }

@@ -238,6 +238,24 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
+                BinOp::AndEq => {
+                    match r.expr {
+                        ExprEnum::Array(_, _) => bin.push(0x3f),
+                        ExprEnum::Identifier(Literal::Number(_)) => bin.push(0x40),
+                        _ => panic!(),
+                    }
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::OrEq => {
+                    match r.expr {
+                        ExprEnum::Array(_, _) => bin.push(0x41),
+                        ExprEnum::Identifier(Literal::Number(_)) => bin.push(0x42),
+                        _ => panic!(),
+                    }
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
                 BinOp::Eq => match r.expr {
                     ExprEnum::Identifier(Literal::Number(n)) => {
                         if n.is_float() {
