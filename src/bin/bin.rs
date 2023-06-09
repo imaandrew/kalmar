@@ -31,15 +31,15 @@ fn main() {
     let data: String = fs::read_to_string("test.scr").unwrap().parse().unwrap();
     let mut parser = parser::Parser::new(&data);
 
-    let mut stmts = parser.parse(cli.verbose);
+    let stmts = parser.parse(cli.verbose);
 
     println!("{:#?}", stmts);
 
     let o_stmts = optimizer::optimize_stmts(stmts);
     println!("{:#?}", o_stmts);
 
-    //let compiler = compiler::Compiler::new();
-    //let code = compiler.compile(stmts);
+    let compiler = compiler::Compiler::new();
+    let code = compiler.compile(o_stmts);
 
-    //println!("{:?}", code);
+    code.iter().for_each(|x| println!("{:08x?}", x));
 }
