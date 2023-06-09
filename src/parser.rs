@@ -50,6 +50,7 @@ pub enum Type {
     Var,
     Ident,
     FuncResult,
+    CaseOrAnd,
     None,
 }
 
@@ -520,6 +521,8 @@ impl Parser {
                     BinOp::Eq | BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::SlashEq
                 ) {
                     self.expr(prec - 1, ExprType::AssignExpr)
+                } else if matches!(op, BinOp::KwAnd | BinOp::KwOr) {
+                    self.expr(prec - 1, expr_type)
                 } else {
                     self.expr(prec + 1, expr_type)
                 };
@@ -579,9 +582,9 @@ impl Parser {
                     BinOp::KwOr | BinOp::KwAnd => {
                         assert!(
                             matches!(left.ty, Type::Int | Type::Var)
-                                && matches!(right.ty, Type::Int | Type::Var)
+                                && matches!(right.ty, Type::Int | Type::Var | Type::CaseOrAnd)
                         );
-                        Type::None
+                        Type::CaseOrAnd
                     }
                     BinOp::KwDefault => panic!(),
                 };

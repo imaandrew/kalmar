@@ -94,7 +94,51 @@ impl Compiler {
                 bin.append(&mut self.compile_stmt(*s));
                 bin.push(0x13)
             }
-            _ => todo!(),
+            Stmt::Switch(e, s) => {
+                bin.push(0x14);
+                bin.append(&mut self.compile_expr(e));
+                bin.append(&mut self.compile_stmt(*s));
+                bin.push(0x23);
+            }
+            Stmt::CaseStmt(e, s) => {
+                match e.expr {
+                    ExprEnum::UnOp(op, e) => {
+                        match op {
+                            UnOp::EqEq => bin.push(0x16),
+                            UnOp::BangEq => bin.push(0x17),
+                            UnOp::Less => bin.push(0x18),
+                            UnOp::Greater => bin.push(0x19),
+                            UnOp::LessEq => bin.push(0x1a),
+                            UnOp::GreaterEq => bin.push(0x1b),
+                            UnOp::Addr => bin.push(0x10),
+                            e => panic!("{:?}", e),
+                        }
+                        bin.append(&mut self.compile_expr(*e));
+                    }
+                    ExprEnum::BinOp(op, e, b) => {
+                        if matches!(op, BinOp::KwOr | BinOp::KwAnd) {
+                            bin.push(0x16);
+                        } else if op == BinOp::Range {
+                            bin.push(0x21);
+                        }
+                        bin.append(&mut self.compile_expr(*e));
+                        match op {
+                            BinOp::KwOr => bin.push(0x1d),
+                            BinOp::KwAnd => bin.push(0x1e),
+                            _ => (),
+                        }
+                        bin.append(&mut self.compile_expr(*b));
+                        if matches!(op, BinOp::KwOr | BinOp::KwAnd) {
+                            bin.push(0x20);
+                        }
+                    }
+                    ExprEnum::Default => bin.push(0x1c),
+                    _ => bin.append(&mut self.compile_expr(e)),
+                }
+                bin.append(&mut self.compile_stmt(*s));
+            }
+            Stmt::BreakCase => bin.push(0x22),
+            e => panic!("Not implemented: {:?}", e),
         }
 
         bin
@@ -117,6 +161,24 @@ impl Compiler {
                     _ => todo!(),
                 }
             }
+            ExprEnum::BinOp(op, l, r) => match op {
+                BinOp::KwOr => {
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.push(0x1d);
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::KwAnd => {
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.push(0x1e);
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::Range => {
+                    bin.push(0x21);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                _ => panic!(),
+            },
             _ => todo!(),
         }
 
