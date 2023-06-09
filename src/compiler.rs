@@ -179,10 +179,37 @@ impl Compiler {
                 }
                 _ => panic!(),
             },
-            _ => todo!(),
+            ExprEnum::Array(ident, index) => {
+                let ident = match ident.expr {
+                    ExprEnum::Identifier(Literal::Identifier(i)) => i,
+                    _ => panic!(),
+                };
+
+                let index = match index.expr {
+                    ExprEnum::Identifier(Literal::Number(n)) => n.as_u32(),
+                    _ => panic!(),
+                };
+
+                bin.push(get_var(&ident, index));
+            }
+            e => panic!("Not implemented {:?}", e),
         }
 
         bin
+    }
+}
+
+fn get_var(ident: &str, index: u32) -> u32 {
+    match ident {
+        "var" => index + 30000000,
+        "map_var" => index + 50000000,
+        "flag" => index + 70000000,
+        "map_flag" => index + 90000000,
+        "area_flag" => index + 110000000,
+        "game_flag" => index + 130000000,
+        "area_byte" => index + 150000000,
+        "game_byte" => index + 170000000,
+        _ => todo!(),
     }
 }
 

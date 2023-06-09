@@ -7,7 +7,6 @@ pub enum Stmt {
     Return,
     BreakLoop,
     BreakCase,
-    NewArray(Expr),
     Label(Literal),
     Goto(Literal),
     Loop(Expr, Box<Stmt>),
@@ -29,6 +28,7 @@ pub enum ExprEnum {
     UnOp(UnOp, Box<Expr>),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
     FuncCall(Box<Expr>, Vec<Expr>),
+    NewArray(Box<Expr>, Box<Expr>),
     Default,
 }
 
@@ -50,6 +50,7 @@ pub enum Type {
     Var,
     Ident,
     FuncResult,
+    NewArray,
     CaseOrAnd,
     None,
 }
@@ -285,7 +286,6 @@ impl Parser {
             TokenKind::KwThread => self.thread_statement(),
             TokenKind::KwChildThread => self.child_thread_statement(),
             TokenKind::KwSwitch => self.switch_statement(),
-            TokenKind::KwNew => self.array_init_statement(),
             TokenKind::Identifier => {
                 if self.peek(TokenKind::Colon) {
                     self.tokens.push(t);
@@ -384,10 +384,6 @@ impl Parser {
         Stmt::CaseStmt(case, Box::new(block))
     }
 
-    fn array_init_statement(&mut self) -> Stmt {
-        Stmt::NewArray(self.expr(0, ExprType::Assign))
-    }
-
     //TODO: check to make sure case and/or exprs are only when type is ==
     fn expr(&mut self, min_prec: u8, expr_type: ExprType) -> Expr {
         let tok = self.pop();
@@ -461,6 +457,10 @@ impl Parser {
             TokenKind::Identifier => Expr {
                 expr: ExprEnum::Identifier(tok.val.unwrap()),
                 ty: Type::Ident,
+            },
+            TokenKind::KwNew => Expr {
+                expr: self.expr(min_prec, expr_type).expr,
+                ty: Type::NewArray,
             },
             _ => panic!(),
         };
@@ -554,7 +554,17 @@ impl Parser {
                         );
                         Type::Bool
                     }
-                    BinOp::Eq | BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::SlashEq => {
+                    BinOp::Eq => {
+                        assert!(
+                            left.ty == Type::Var
+                                && matches!(
+                                    right.ty,
+                                    Type::Int | Type::Float | Type::Var | Type::NewArray
+                                )
+                        );
+                        Type::None
+                    }
+                    BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::SlashEq => {
                         assert!(
                             left.ty == Type::Var
                                 && matches!(right.ty, Type::Int | Type::Float | Type::Var)

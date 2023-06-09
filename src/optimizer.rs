@@ -15,7 +15,6 @@ fn collapse_stmt(stmt: Stmt) -> Stmt {
     match stmt {
         Stmt::Script(n, s) => Stmt::Script(n, Box::new(collapse_stmt(*s))),
         Stmt::Block(s) => Stmt::Block(optimize_stmts(s)),
-        Stmt::NewArray(e) => Stmt::NewArray(collapse_expr(e)),
         Stmt::Loop(e, s) => Stmt::Loop(collapse_expr(e), Box::new(collapse_stmt(*s))),
         Stmt::IfElse(i, e) => Stmt::IfElse(Box::new(collapse_stmt(*i)), optimize_stmts(e)),
         Stmt::If(e, s) => Stmt::If(collapse_expr(e), Box::new(collapse_stmt(*s))),
