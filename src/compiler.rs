@@ -135,7 +135,6 @@ impl Compiler {
                             bin.push(0x20);
                         }
                     }
-                    ExprEnum::Default => bin.push(0x1c),
                     _ => bin.append(&mut self.compile_expr(e)),
                 }
                 bin.append(&mut self.compile_stmt(*s));
@@ -265,6 +264,7 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(arg));
                 }
             }
+            ExprEnum::Default => bin.push(0x1c),
             e => panic!("Not implemented {:?}", e),
         }
 
