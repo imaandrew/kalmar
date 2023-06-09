@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::lexer::{Lexer, Literal, Number, Token, TokenKind};
 
 #[derive(Debug)]
@@ -7,8 +9,8 @@ pub enum Stmt {
     Return,
     BreakLoop,
     BreakCase,
-    Label(Literal),
-    Goto(Literal),
+    Label(u32),
+    Goto(u32),
     Loop(Expr, Box<Stmt>),
     IfElse(Box<Stmt>, Vec<Stmt>),
     If(Expr, Box<Stmt>),
@@ -220,6 +222,7 @@ impl PostOp {
 pub struct Parser {
     lexer: Lexer,
     tokens: Vec<Token>,
+    labels: HashMap<String, u32>,
     verbose: bool,
 }
 
@@ -228,6 +231,7 @@ impl Parser {
         Parser {
             lexer: Lexer::new(data),
             tokens: vec![],
+            labels: HashMap::new(),
             verbose: false,
         }
     }
@@ -300,13 +304,32 @@ impl Parser {
 
     fn goto_statement(&mut self) -> Stmt {
         let ident = self.consume(TokenKind::Identifier);
-        Stmt::Goto(ident.val.unwrap())
+
+        let val = match ident.val.unwrap() {
+            Literal::Number(n) => format!("{}", n.as_u32()),
+            Literal::Identifier(i) => i,
+            _ => panic!(),
+        };
+
+        Stmt::Goto(*self.labels.get(&val).unwrap())
     }
 
     fn label_statement(&mut self) -> Stmt {
         let ident = self.consume(TokenKind::Identifier);
         self.assert(TokenKind::Colon);
-        Stmt::Label(ident.val.unwrap())
+
+        assert!(self.labels.len() <= 16);
+
+        let val = match ident.val.unwrap() {
+            Literal::Number(n) => format!("{}", n.as_u32()),
+            Literal::Identifier(i) => i,
+            _ => panic!(),
+        };
+
+        assert!(!self.labels.contains_key(&val));
+        self.labels.insert(val, self.labels.len() as u32);
+
+        Stmt::Label(self.labels.len() as u32 - 1)
     }
 
     fn loop_statement(&mut self) -> Stmt {

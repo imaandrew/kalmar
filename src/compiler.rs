@@ -46,13 +46,13 @@ impl Compiler {
                 }
             }
             Stmt::Return => bin.push(2),
-            Stmt::Label(Literal::Number(n)) => {
+            Stmt::Label(n) => {
                 bin.push(3);
-                bin.push(n.as_u32())
+                bin.push(n)
             }
-            Stmt::Goto(Literal::Number(n)) => {
+            Stmt::Goto(n) => {
                 bin.push(4);
-                bin.push(n.as_u32())
+                bin.push(n)
             }
             Stmt::Loop(e, s) => {
                 bin.push(5);
