@@ -244,7 +244,7 @@ impl Compiler {
                     match r.expr {
                         ExprEnum::Array(_, _) => bin.push(0x3f),
                         ExprEnum::Identifier(Literal::Number(_)) => bin.push(0x40),
-                        _ => panic!(),
+                        _ => unreachable!(),
                     }
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
@@ -253,7 +253,7 @@ impl Compiler {
                     match r.expr {
                         ExprEnum::Array(_, _) => bin.push(0x41),
                         ExprEnum::Identifier(Literal::Number(_)) => bin.push(0x42),
-                        _ => panic!(),
+                        _ => unreachable!(),
                     }
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
@@ -282,7 +282,7 @@ impl Compiler {
                         bin.append(&mut self.compile_expr(*r));
                         bin.append(&mut self.compile_expr(*l));
                     }
-                    _ => panic!(),
+                    _ => unreachable!(),
                 },
                 BinOp::EqEq => {
                     bin.push(0xa);
@@ -319,17 +319,23 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                e => panic!("{:?}", e),
+                BinOp::Plus
+                | BinOp::Minus
+                | BinOp::Star
+                | BinOp::Slash
+                | BinOp::Percent
+                | BinOp::KwDefault => unreachable!(),
+                BinOp::Comma => todo!(),
             },
             ExprEnum::Array(ident, index) => {
                 let ident = match ident.expr {
                     ExprEnum::Identifier(Literal::Identifier(i)) => i,
-                    _ => panic!(),
+                    _ => unreachable!(),
                 };
 
                 let index = match index.expr {
                     ExprEnum::Identifier(Literal::Number(n)) => n.as_u32(),
-                    _ => panic!(),
+                    _ => unreachable!(),
                 };
 
                 bin.push(get_var(&ident, index));
@@ -337,7 +343,7 @@ impl Compiler {
             ExprEnum::FuncCall(func, args) => {
                 let addr = match func.expr {
                     ExprEnum::Identifier(Literal::Identifier(i)) => self.get_func(&i).unwrap(),
-                    _ => panic!(),
+                    _ => unreachable!(),
                 };
                 bin.push(addr);
                 for arg in args {
