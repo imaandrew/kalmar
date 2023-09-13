@@ -454,7 +454,7 @@ impl Parser {
                 self.assert(TokenKind::RParen);
                 left
             }
-            TokenKind::Plus | TokenKind::Minus => {
+            TokenKind::Minus => {
                 let op = UnOp::try_from(tok.kind).unwrap();
                 let right = self.expr(op.precedence(expr_type), expr_type);
                 let t = right.ty;
