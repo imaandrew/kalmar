@@ -163,123 +163,60 @@ impl Number {
     }
 }
 
-impl Add for Number {
-    type Output = Number;
+macro_rules! number_ops {
+    ($($op_trait:ident $op_fn:ident $op:tt),*) => {
+        $(
+            impl $op_trait for Number {
+                type Output = Number;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        match (&self, &rhs) {
-            (Number::Float(x), Number::Float(y)) => Number::Float(x + y),
-            (Number::Float(x), y) | (y, Number::Float(x)) => Number::Float(x + y.as_u32() as f32),
-            _ => {
-                let sum = self.as_u32() + rhs.as_u32();
-                match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                    2 => Number::Byte(sum as u8),
-                    4 => Number::Short(sum as u16),
-                    8 => Number::Integer(sum),
-                    e => panic!("{}", e),
+                fn $op_fn(self, rhs: Self) -> Self::Output {
+                    match (&self, &rhs) {
+                        (Number::Float(x), Number::Float(y)) => Number::Float(x $op y),
+                        (Number::Float(x), y) | (y, Number::Float(x)) => Number::Float(x $op y.as_u32() as f32),
+                        _ => {
+                            let result = self.as_u32() $op rhs.as_u32();
+                            match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
+                                2 => Number::Byte(result as u8),
+                                4 => Number::Short(result as u16),
+                                8 => Number::Integer(result),
+                                e => panic!("{}", e),
+                            }
+                        }
+                    }
                 }
             }
-        }
-    }
+        )*
+    };
 }
 
-impl Sub for Number {
-    type Output = Number;
+number_ops! { Add add +, Sub sub -, Mul mul *, Div div / }
 
-    fn sub(self, rhs: Self) -> Self::Output {
-        match (&self, &rhs) {
-            (Number::Float(x), Number::Float(y)) => Number::Float(x - y),
-            (Number::Float(x), y) | (y, Number::Float(x)) => Number::Float(x - y.as_u32() as f32),
-            _ => {
-                let diff = self.as_u32() - rhs.as_u32();
-                match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                    2 => Number::Byte(diff as u8),
-                    4 => Number::Short(diff as u16),
-                    8 => Number::Integer(diff),
-                    e => panic!("{}", e),
+macro_rules! int_ops {
+    ($($op_trait:ident $op_fn:ident $op:tt),*) => {
+        $(
+            impl $op_trait for Number {
+                type Output = Number;
+
+                fn $op_fn(self, rhs: Self) -> Self::Output {
+                    match (&self, &rhs) {
+                        (Number::Float(_), _) | (_, Number::Float(_)) => panic!(),
+                        _ => {
+                            let result = self.as_u32() $op rhs.as_u32();
+                            match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
+                                2 => Number::Byte(result as u8),
+                                4 => Number::Short(result as u16),
+                                8 => Number::Integer(result),
+                                e => panic!("{}", e),
+                            }
+                        }
+                    }
                 }
             }
-        }
-    }
+        )*
+    };
 }
 
-impl Mul for Number {
-    type Output = Number;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        match (&self, &rhs) {
-            (Number::Float(x), Number::Float(y)) => Number::Float(x * y),
-            (Number::Float(x), y) | (y, Number::Float(x)) => Number::Float(x * y.as_u32() as f32),
-            _ => {
-                let diff = self.as_u32() * rhs.as_u32();
-                match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                    2 => Number::Byte(diff as u8),
-                    4 => Number::Short(diff as u16),
-                    8 => Number::Integer(diff),
-                    e => panic!("{}", e),
-                }
-            }
-        }
-    }
-}
-
-impl Div for Number {
-    type Output = Number;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        match (&self, &rhs) {
-            (Number::Float(x), Number::Float(y)) => Number::Float(x / y),
-            (Number::Float(x), y) | (y, Number::Float(x)) => Number::Float(x / y.as_u32() as f32),
-            _ => {
-                let diff = self.as_u32() / rhs.as_u32();
-                match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                    2 => Number::Byte(diff as u8),
-                    4 => Number::Short(diff as u16),
-                    8 => Number::Integer(diff),
-                    e => panic!("{}", e),
-                }
-            }
-        }
-    }
-}
-
-impl Rem for Number {
-    type Output = Number;
-
-    fn rem(self, rhs: Self) -> Self::Output {
-        match (&self, &rhs) {
-            (Number::Float(_), _) | (_, Number::Float(_)) => panic!(),
-            _ => {
-                let rem = self.as_u32() % rhs.as_u32();
-                match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                    2 => Number::Byte(rem as u8),
-                    4 => Number::Short(rem as u16),
-                    8 => Number::Integer(rem),
-                    e => panic!("{}", e),
-                }
-            }
-        }
-    }
-}
-
-impl BitAnd for Number {
-    type Output = Number;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        match (&self, &rhs) {
-            (Number::Float(_), _) | (_, Number::Float(_)) => panic!(),
-            _ => {
-                let res = self.as_u32() & rhs.as_u32();
-                match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                    2 => Number::Byte(res as u8),
-                    4 => Number::Short(res as u16),
-                    8 => Number::Integer(res),
-                    e => panic!("{}", e),
-                }
-            }
-        }
-    }
-}
+int_ops! { Rem rem %, BitAnd bitand & }
 
 impl Neg for Number {
     type Output = Number;
