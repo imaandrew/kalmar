@@ -258,7 +258,7 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::Eq => match *r {
+                BinOp::Assign => match *r {
                     Expr::Identifier(Literal::Number(n)) => {
                         if n.is_float() {
                             bin.push(0x26);
@@ -273,14 +273,10 @@ impl Compiler {
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
-                    Expr::UnOp(UnOp::Addr, r) => {
+                    Expr::UnOp(UnOp::Ampersand, r) => {
                         bin.push(0x25);
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
-                    }
-                    Expr::NewArray(_, _) => {
-                        bin.append(&mut self.compile_expr(*r));
-                        bin.append(&mut self.compile_expr(*l));
                     }
                     _ => unreachable!(),
                 },
@@ -319,6 +315,11 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
+                BinOp::Or => {
+                    bin.push(0x11);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
                 BinOp::Plus
                 | BinOp::Minus
                 | BinOp::Star
@@ -326,8 +327,8 @@ impl Compiler {
                 | BinOp::Mod => unreachable!(),
             },
             Expr::Array(ident, index) => {
-                let ident = match *ident {
-                    Expr::Identifier(Literal::Identifier(i)) => i,
+                let ident = match ident {
+                    Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
 
@@ -349,10 +350,6 @@ impl Compiler {
                 }
             }
             Expr::Default => bin.push(0x1c),
-            Expr::NewArray(_, r) => {
-                bin.push(0x3e);
-                bin.append(&mut self.compile_expr(*r));
-            }
         }
 
         bin

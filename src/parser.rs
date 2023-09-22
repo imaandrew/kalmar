@@ -23,7 +23,7 @@ pub enum Stmt {
     CaseStmt(Expr, Box<Stmt>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnOp {
     Minus,
     Bang,
@@ -74,7 +74,7 @@ impl UnOp {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum BinOp {
     Plus,
     Minus,
@@ -140,7 +140,7 @@ impl TryFrom<TokenKind> for BinOp {
 impl BinOp {
     fn precedence(&self) -> (u8, u8) {
         match self {
-            Self::Range => (20, 21),
+            Self::Range | Self::Or | Self::And => (20, 21),
             Self::Star | Self::Div | Self::Mod => (30, 31),
             Self::Plus | Self::Minus => (40, 41),
             Self::Greater | Self::GreaterEq | Self::Less | Self::LessEq => (50, 51),
@@ -162,7 +162,7 @@ impl BinOp {
 #[derive(Debug)]
 pub enum Expr {
     Identifier(Literal),
-    Var(Literal, Box<Expr>),
+    Array(Literal, Box<Expr>),
     UnOp(UnOp, Box<Expr>),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
     FuncCall(Literal, Vec<Expr>),
@@ -363,7 +363,7 @@ impl Parser {
                     self.pop();
                     let idx = self.expr(0);
                     self.assert(TokenKind::RBracket);
-                    Expr::Var(t.val.unwrap(), Box::new(idx))
+                    Expr::Array(t.val.unwrap(), Box::new(idx))
                 }
                 TokenKind::LParen => {
                     self.pop();
