@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::lexer::Literal;
-use crate::parser::{BinOp, Expr, ExprEnum, Stmt, UnOp};
+use crate::parser::{BinOp, Expr, Stmt, UnOp};
 
 pub struct Compiler {
     syms: HashMap<String, u32>,
@@ -68,9 +68,9 @@ impl Compiler {
                 }
             }
             Stmt::If(e, s) => {
-                match e.expr {
-                    ExprEnum::BinOp(_, _, _) => bin.append(&mut self.compile_expr(e)),
-                    ExprEnum::UnOp(UnOp::Bang, e) => {
+                match e {
+                    Expr::BinOp(_, _, _) => bin.append(&mut self.compile_expr(e)),
+                    Expr::UnOp(UnOp::Bang, e) => {
                         let mut e = self.compile_expr(*e);
                         e[0] = match e[0] {
                             0xa => 0xb,
@@ -106,34 +106,34 @@ impl Compiler {
                 bin.push(0x23);
             }
             Stmt::CaseStmt(e, s) => {
-                match e.expr {
-                    ExprEnum::UnOp(op, e) => {
+                match e {
+                    Expr::UnOp(op, e) => {
                         match op {
-                            UnOp::EqEq => bin.push(0x16),
-                            UnOp::BangEq => bin.push(0x17),
+                            UnOp::Equal => bin.push(0x16),
+                            UnOp::NotEqual => bin.push(0x17),
                             UnOp::Less => bin.push(0x18),
                             UnOp::Greater => bin.push(0x19),
                             UnOp::LessEq => bin.push(0x1a),
                             UnOp::GreaterEq => bin.push(0x1b),
-                            UnOp::Addr => bin.push(0x10),
+                            UnOp::Ampersand => bin.push(0x10),
                             _ => unreachable!(),
                         }
                         bin.append(&mut self.compile_expr(*e));
                     }
-                    ExprEnum::BinOp(op, e, b) => {
-                        if matches!(op, BinOp::KwOr | BinOp::KwAnd) {
+                    Expr::BinOp(op, e, b) => {
+                        if matches!(op, BinOp::Or | BinOp::And) {
                             bin.push(0x16);
                         } else if op == BinOp::Range {
                             bin.push(0x21);
                         }
                         bin.append(&mut self.compile_expr(*e));
                         match op {
-                            BinOp::KwOr => bin.push(0x1d),
-                            BinOp::KwAnd => bin.push(0x1e),
+                            BinOp::Or => bin.push(0x1d),
+                            BinOp::And => bin.push(0x1e),
                             _ => (),
                         }
                         bin.append(&mut self.compile_expr(*b));
-                        if matches!(op, BinOp::KwOr | BinOp::KwAnd) {
+                        if matches!(op, BinOp::Or | BinOp::And) {
                             bin.push(0x20);
                         }
                     }
@@ -169,13 +169,13 @@ impl Compiler {
     fn compile_expr(&self, expr: Expr) -> Vec<u32> {
         let mut bin = vec![];
 
-        match expr.expr {
-            ExprEnum::Identifier(lit) => match lit {
+        match expr {
+            Expr::Identifier(lit) => match lit {
                 Literal::Number(n) => bin.push(n.as_u32()),
                 Literal::Identifier(i) => bin.push(*self.syms.get(&i).unwrap()),
                 _ => todo!(),
             },
-            ExprEnum::UnOp(op, expr) => {
+            Expr::UnOp(op, expr) => {
                 let e = self.compile_expr(*expr);
                 assert_eq!(e.len(), 1);
                 match op {
@@ -183,13 +183,13 @@ impl Compiler {
                     _ => todo!(),
                 }
             }
-            ExprEnum::BinOp(op, l, r) => match op {
-                BinOp::KwOr => {
+            Expr::BinOp(op, l, r) => match op {
+                BinOp::BitOr => {
                     bin.append(&mut self.compile_expr(*l));
                     bin.push(0x1d);
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::KwAnd => {
+                BinOp::BitAnd => {
                     bin.append(&mut self.compile_expr(*l));
                     bin.push(0x1e);
                     bin.append(&mut self.compile_expr(*r));
@@ -200,7 +200,7 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::PlusEq => {
-                    if let ExprEnum::Identifier(Literal::Number(n)) = r.expr {
+                    if let Expr::Identifier(Literal::Number(n)) = *r {
                         bin.push(if n.is_float() { 0x2c } else { 0x27 });
                     } else {
                         bin.push(0x27);
@@ -209,7 +209,7 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::MinusEq => {
-                    if let ExprEnum::Identifier(Literal::Number(n)) = r.expr {
+                    if let Expr::Identifier(Literal::Number(n)) = *r {
                         bin.push(if n.is_float() { 0x2d } else { 0x28 });
                     } else {
                         bin.push(0x28);
@@ -218,7 +218,7 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::StarEq => {
-                    if let ExprEnum::Identifier(Literal::Number(n)) = r.expr {
+                    if let Expr::Identifier(Literal::Number(n)) = *r {
                         bin.push(if n.is_float() { 0x2e } else { 0x29 });
                     } else {
                         bin.push(0x29);
@@ -226,8 +226,8 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::SlashEq => {
-                    if let ExprEnum::Identifier(Literal::Number(n)) = r.expr {
+                BinOp::DivEq => {
+                    if let Expr::Identifier(Literal::Number(n)) = *r {
                         bin.push(if n.is_float() { 0x2f } else { 0x2a });
                     } else {
                         bin.push(0x2a);
@@ -235,31 +235,31 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::PercentEq => {
+                BinOp::ModEq => {
                     bin.push(0x2b);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::AndEq => {
-                    match r.expr {
-                        ExprEnum::Array(_, _) => bin.push(0x3f),
-                        ExprEnum::Identifier(Literal::Number(_)) => bin.push(0x40),
+                    match *r {
+                        Expr::Array(_, _) => bin.push(0x3f),
+                        Expr::Identifier(Literal::Number(_)) => bin.push(0x40),
                         _ => unreachable!(),
                     }
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::OrEq => {
-                    match r.expr {
-                        ExprEnum::Array(_, _) => bin.push(0x41),
-                        ExprEnum::Identifier(Literal::Number(_)) => bin.push(0x42),
+                    match *r {
+                        Expr::Array(_, _) => bin.push(0x41),
+                        Expr::Identifier(Literal::Number(_)) => bin.push(0x42),
                         _ => unreachable!(),
                     }
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::Eq => match r.expr {
-                    ExprEnum::Identifier(Literal::Number(n)) => {
+                BinOp::Assign => match *r {
+                    Expr::Identifier(Literal::Number(n)) => {
                         if n.is_float() {
                             bin.push(0x26);
                         } else {
@@ -268,28 +268,24 @@ impl Compiler {
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
-                    ExprEnum::Array(_, _) => {
+                    Expr::Array(_, _) => {
                         bin.push(0x24);
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
-                    ExprEnum::UnOp(UnOp::Addr, r) => {
+                    Expr::UnOp(UnOp::Ampersand, r) => {
                         bin.push(0x25);
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
-                    ExprEnum::NewArray(_, _) => {
-                        bin.append(&mut self.compile_expr(*r));
-                        bin.append(&mut self.compile_expr(*l));
-                    }
                     _ => unreachable!(),
                 },
-                BinOp::EqEq => {
+                BinOp::Equal => {
                     bin.push(0xa);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::BangEq => {
+                BinOp::NotEqual => {
                     bin.push(0xb);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
@@ -319,30 +315,31 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::Plus
-                | BinOp::Minus
-                | BinOp::Star
-                | BinOp::Slash
-                | BinOp::Percent
-                | BinOp::KwDefault => unreachable!(),
-                BinOp::Comma => todo!(),
+                BinOp::Or => {
+                    bin.push(0x11);
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
+                BinOp::Plus | BinOp::Minus | BinOp::Star | BinOp::Div | BinOp::Mod => {
+                    unreachable!()
+                }
             },
-            ExprEnum::Array(ident, index) => {
-                let ident = match ident.expr {
-                    ExprEnum::Identifier(Literal::Identifier(i)) => i,
+            Expr::Array(ident, index) => {
+                let ident = match ident {
+                    Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
 
-                let index = match index.expr {
-                    ExprEnum::Identifier(Literal::Number(n)) => n.as_u32(),
+                let index = match *index {
+                    Expr::Identifier(Literal::Number(n)) => n.as_u32(),
                     _ => unreachable!(),
                 };
 
                 bin.push(get_var(&ident, index));
             }
-            ExprEnum::FuncCall(func, args) => {
-                let addr = match func.expr {
-                    ExprEnum::Identifier(Literal::Identifier(i)) => self.get_func(&i).unwrap(),
+            Expr::FuncCall(func, args) => {
+                let addr = match func {
+                    Literal::Identifier(i) => self.get_func(&i).unwrap(),
                     _ => unreachable!(),
                 };
                 bin.push(addr);
@@ -350,11 +347,7 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(arg));
                 }
             }
-            ExprEnum::Default => bin.push(0x1c),
-            ExprEnum::NewArray(_, r) => {
-                bin.push(0x3e);
-                bin.append(&mut self.compile_expr(*r));
-            }
+            Expr::Default => bin.push(0x1c),
         }
 
         bin
