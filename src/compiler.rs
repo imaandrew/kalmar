@@ -320,11 +320,9 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::Plus
-                | BinOp::Minus
-                | BinOp::Star
-                | BinOp::Div
-                | BinOp::Mod => unreachable!(),
+                BinOp::Plus | BinOp::Minus | BinOp::Star | BinOp::Div | BinOp::Mod => {
+                    unreachable!()
+                }
             },
             Expr::Array(ident, index) => {
                 let ident = match ident {
