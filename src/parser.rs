@@ -276,7 +276,6 @@ impl Parser {
         assert!(self.labels.len() <= 16);
 
         let val = match ident.val.unwrap() {
-            Literal::Number(n) => format!("{}", n.as_u32()),
             Literal::Identifier(i) => i,
             _ => panic!(),
         };
