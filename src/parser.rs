@@ -204,10 +204,13 @@ impl Parser {
     fn declaration(&mut self) -> Stmt {
         self.assert(TokenKind::KwScr);
         let ident = self.consume(TokenKind::Identifier);
-        Stmt::Script(ident.val.unwrap(), Box::new(self.block(Self::statement)))
+        Stmt::Script(
+            ident.val.unwrap(),
+            Box::new(self.block(Self::statement, true)),
+        )
     }
 
-    fn block<F>(&mut self, stmt_func: F) -> Stmt
+    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Stmt
     where
         F: Fn(&mut Self) -> Stmt,
     {
@@ -218,7 +221,9 @@ impl Parser {
 
         while !self.peek(TokenKind::RBrace) {
             stmts.push(stmt_func(self));
-            self.assert(TokenKind::Newline);
+            if end_stmt_newlines {
+                self.assert(TokenKind::Newline);
+            }
             self.skip_newlines();
         }
 
@@ -285,7 +290,7 @@ impl Parser {
     fn loop_statement(&mut self) -> Stmt {
         let loop_count = self.expr(0);
 
-        let block = self.block(Self::statement);
+        let block = self.block(Self::statement, true);
 
         Stmt::Loop(loop_count, Box::new(block))
     }
@@ -297,8 +302,7 @@ impl Parser {
 
         while self.peek_over_newlines(TokenKind::KwElse) {
             self.skip_newlines();
-            let tok = self.consume(TokenKind::KwElse);
-            self.tokens.push(tok);
+            self.assert(TokenKind::KwElse);
             else_stmts.push(self.else_statement());
         }
 
@@ -307,18 +311,17 @@ impl Parser {
 
     fn if_statement(&mut self) -> Stmt {
         let if_expr = self.expr(0);
-        let if_block = self.block(Self::statement);
+        let if_block = self.block(Self::statement, true);
         Stmt::If(if_expr, Box::new(if_block))
     }
 
     fn else_statement(&mut self) -> Stmt {
-        self.assert(TokenKind::KwElse);
         if self.peek(TokenKind::KwIf) {
             self.assert(TokenKind::KwIf);
             let if_stmt = self.if_statement();
             Stmt::Else(Some(Box::new(if_stmt)), None)
         } else {
-            let else_block = self.block(Self::statement);
+            let else_block = self.block(Self::statement, true);
             Stmt::Else(None, Some(Box::new(else_block)))
         }
     }
@@ -329,16 +332,16 @@ impl Parser {
     }
 
     fn thread_statement(&mut self) -> Stmt {
-        Stmt::Thread(Box::new(self.block(Self::statement)))
+        Stmt::Thread(Box::new(self.block(Self::statement, true)))
     }
 
     fn child_thread_statement(&mut self) -> Stmt {
-        Stmt::ChildThread(Box::new(self.block(Self::statement)))
+        Stmt::ChildThread(Box::new(self.block(Self::statement, true)))
     }
 
     fn switch_statement(&mut self) -> Stmt {
         let val = self.expr(0);
-        let block = self.block(Self::case_statement);
+        let block = self.block(Self::case_statement, false);
 
         Stmt::Switch(val, Box::new(block))
     }
@@ -349,7 +352,7 @@ impl Parser {
             TokenKind::KwDefault => Expr::Default,
             _ => panic!(),
         };
-        let block = self.block(Self::statement);
+        let block = self.block(Self::statement, true);
 
         Stmt::CaseStmt(case, Box::new(block))
     }
