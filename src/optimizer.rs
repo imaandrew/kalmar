@@ -43,11 +43,11 @@ fn collapse_stmt(stmt: &mut Stmt) {
 }
 
 macro_rules! generate_binops {
-    ($expr:ident, $($binop:pat, $op:tt, $type:ident),*) => {
+    ($expr:ident, $($binop:ident, $op:tt, $type:ident),*) => {
         match $expr {
             Expr::BinOp(op, l, r) => match op {
                 $(
-                    $binop => match (l.as_ref(), r.as_ref()) {
+                    BinOp::$binop => match (l.as_ref(), r.as_ref()) {
                         (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
                             *$expr = Expr::Identifier(Literal::$type(*x $op *y));
                         }
@@ -64,18 +64,18 @@ macro_rules! generate_binops {
 fn collapse_expr(expr: &mut Expr) {
     generate_binops!(
         expr,
-        BinOp::Plus, +, Number,
-        BinOp::Minus, -, Number,
-        BinOp::Star, *, Number,
-        BinOp::Div, /, Number,
-        BinOp::Mod, %, Number,
-        BinOp::BitAnd, &, Number,
-        BinOp::Equal, ==, Boolean,
-        BinOp::NotEqual, !=, Boolean,
-        BinOp::Greater, >, Boolean,
-        BinOp::GreaterEq, >=, Boolean,
-        BinOp::Less, <, Boolean,
-        BinOp::LessEq, <=, Boolean
+        Plus, +, Number,
+        Minus, -, Number,
+        Star, *, Number,
+        Div, /, Number,
+        Mod, %, Number,
+        BitAnd, &, Number,
+        Equal, ==, Boolean,
+        NotEqual, !=, Boolean,
+        Greater, >, Boolean,
+        GreaterEq, >=, Boolean,
+        Less, <, Boolean,
+        LessEq, <=, Boolean
     );
 
     match expr {
