@@ -42,7 +42,42 @@ fn collapse_stmt(stmt: &mut Stmt) {
     }
 }
 
+macro_rules! generate_binops {
+    ($expr:ident, $($binop:pat, $op:tt, $type:ident),*) => {
+        match $expr {
+            Expr::BinOp(op, l, r) => match op {
+                $(
+                    $binop => match (l.as_ref(), r.as_ref()) {
+                        (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
+                            *$expr = Expr::Identifier(Literal::$type(*x $op *y));
+                        }
+                        _ => (),
+                    }
+                )*
+                _ => (),
+            },
+            _ => (),
+        }
+    };
+}
+
 fn collapse_expr(expr: &mut Expr) {
+    generate_binops!(
+        expr,
+        BinOp::Plus, +, Number,
+        BinOp::Minus, -, Number,
+        BinOp::Star, *, Number,
+        BinOp::Div, /, Number,
+        BinOp::Mod, %, Number,
+        BinOp::BitAnd, &, Number,
+        BinOp::Equal, ==, Boolean,
+        BinOp::NotEqual, !=, Boolean,
+        BinOp::Greater, >, Boolean,
+        BinOp::GreaterEq, >=, Boolean,
+        BinOp::Less, <, Boolean,
+        BinOp::LessEq, <=, Boolean
+    );
+
     match expr {
         Expr::UnOp(op, e) => match op {
             UnOp::Minus => match &mut **e {
@@ -56,81 +91,6 @@ fn collapse_expr(expr: &mut Expr) {
             _ => {
                 collapse_expr(e);
             }
-        },
-        Expr::BinOp(op, l, r) => match op {
-            BinOp::Plus => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Number(*x + *y))
-                }
-                _ => (),
-            },
-            BinOp::Minus => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Number(*x - *y))
-                }
-                _ => (),
-            },
-            BinOp::Star => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Number(*x * *y))
-                }
-                _ => (),
-            },
-            BinOp::Div => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Number(*x / *y))
-                }
-                _ => (),
-            },
-            BinOp::Equal => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Boolean(x == y))
-                }
-                _ => (),
-            },
-            BinOp::NotEqual => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Boolean(x != y))
-                }
-                _ => (),
-            },
-            BinOp::Greater => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Boolean(x > y))
-                }
-                _ => (),
-            },
-            BinOp::GreaterEq => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Boolean(x >= y))
-                }
-                _ => (),
-            },
-            BinOp::Less => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Boolean(x > y))
-                }
-                _ => (),
-            },
-            BinOp::LessEq => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Boolean(x <= y))
-                }
-                _ => (),
-            },
-            BinOp::Mod => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Number(*x % *y))
-                }
-                _ => (),
-            },
-            BinOp::BitAnd => match (l.as_ref(), r.as_ref()) {
-                (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                    *expr = Expr::Identifier(Literal::Number(*x & *y))
-                }
-                _ => (),
-            },
-            _ => (),
         },
         Expr::FuncCall(_, a) => {
             for mut arg in a {
