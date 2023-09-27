@@ -17,27 +17,41 @@ enum Type {
 
 pub struct SemChecker<'a> {
     declared_scripts: Vec<&'a String>,
-    referenced_scripts: Vec<String>,
+    referenced_scripts: Vec<&'a String>,
+    declared_labels: Vec<&'a String>,
+    referenced_labels: Vec<&'a String>,
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn check_stmts(&mut self, stmts: &'a mut Vec<Stmt>) {
+    pub fn check_stmts(&mut self, stmts: &'a Vec<Stmt>) {
         for stmt in stmts {
             self.check_stmt(stmt);
         }
 
-        self.verify_referenced_scrips();
+        self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts);
+        self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels);
     }
 
-    fn check_stmt(&mut self, stmt: &'a mut Stmt) {
+    fn check_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::Script(i, s) => {
-                self.check_script_uniqueness(i);
+                self.check_identifier_uniqueness(i, &self.declared_scripts, || ());
                 self.check_stmt(s);
             }
             Stmt::Block(s) => self.check_stmts(s),
-            Stmt::Label(_) => unimplemented!(),
-            Stmt::Goto(_) => unimplemented!(),
+            Stmt::Label(l) => self.check_identifier_uniqueness(l, &self.declared_labels, || {
+                if self.declared_labels.len() >= 16 {
+                    panic!("Cannot have more than 16 labels per script");
+                }
+            }),
+            Stmt::Goto(l) => match l {
+                Literal::Identifier(i) => {
+                    if !self.referenced_labels.contains(&i) {
+                        self.referenced_labels.push(i);
+                    }
+                }
+                _ => panic!(),
+            },
             Stmt::Loop(e, s) => {
                 self.check_expr(e);
                 self.check_stmt(s);
@@ -72,7 +86,7 @@ impl<'a> SemChecker<'a> {
         };
     }
 
-    fn check_expr(&self, expr: &mut Expr) -> Type {
+    fn check_expr(&self, expr: &Expr) -> Type {
         match expr {
             Expr::Identifier(l) => match l {
                 Literal::Identifier(_) => Type::Identifier,
@@ -99,7 +113,7 @@ impl<'a> SemChecker<'a> {
         }
     }
 
-    fn check_unop_type(&self, op: &UnOp, expr: &mut Expr) -> Type {
+    fn check_unop_type(&self, op: &UnOp, expr: &Expr) -> Type {
         let t = self.check_expr(expr);
         match op {
             UnOp::Minus => {
@@ -127,7 +141,7 @@ impl<'a> SemChecker<'a> {
         }
     }
 
-    fn check_binop_type(&self, op: &BinOp, lhs: &mut Expr, rhs: &mut Expr) -> Type {
+    fn check_binop_type(&self, op: &BinOp, lhs: &Expr, rhs: &Expr) -> Type {
         let l_type = self.check_expr(lhs);
         let r_type = self.check_expr(rhs);
         match op {
@@ -179,24 +193,37 @@ impl<'a> SemChecker<'a> {
         }
     }
 
-    fn check_script_uniqueness(&mut self, ident: &'a Literal) {
+    fn check_identifier_uniqueness<F>(
+        &mut self,
+        ident: &'a Literal,
+        declared: &Vec<&'a String>,
+        callback: F,
+    ) where
+        F: FnOnce() -> (),
+    {
+        callback();
+
         let name = match ident {
             Literal::Identifier(i) => i,
             _ => panic!(),
         };
 
-        if self.declared_scripts.contains(&name) {
+        if declared.contains(&name) {
             panic!("Script {} redeclared", name);
         }
 
-        self.declared_scripts.push(name);
+        declared.push(name);
     }
 
-    fn verify_referenced_scrips(&self) {
+    fn verify_referenced_identifiers(
+        &self,
+        declared: &Vec<&'a String>,
+        referenced: &Vec<&'a String>,
+    ) {
         let mut undeclared_references = vec![];
-        for script in &self.referenced_scripts {
-            if !self.declared_scripts.contains(&script) {
-                undeclared_references.push(script);
+        for ident in referenced {
+            if !declared.contains(ident) {
+                undeclared_references.push(ident);
             }
         }
 
