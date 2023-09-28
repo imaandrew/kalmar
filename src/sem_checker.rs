@@ -29,7 +29,6 @@ impl<'a> SemChecker<'a> {
         }
 
         self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts);
-        self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels);
     }
 
     fn check_stmt(&mut self, stmt: &'a Stmt) {
@@ -39,6 +38,7 @@ impl<'a> SemChecker<'a> {
                 self.referenced_labels.clear();
                 self.check_identifier_uniqueness(i, &self.declared_scripts, || ());
                 self.check_stmt(s);
+                self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels);
             }
             Stmt::Block(s) => self.check_stmts(s),
             Stmt::Label(l) => self.check_identifier_uniqueness(l, &self.declared_labels, || {
