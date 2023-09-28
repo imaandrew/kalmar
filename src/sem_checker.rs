@@ -35,6 +35,8 @@ impl<'a> SemChecker<'a> {
     fn check_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::Script(i, s) => {
+                self.declared_labels.clear();
+                self.referenced_labels.clear();
                 self.check_identifier_uniqueness(i, &self.declared_scripts, || ());
                 self.check_stmt(s);
             }
