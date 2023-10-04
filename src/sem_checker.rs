@@ -36,16 +36,17 @@ impl<'a> SemChecker<'a> {
             Stmt::Script(i, s) => {
                 self.declared_labels.clear();
                 self.referenced_labels.clear();
-                self.check_identifier_uniqueness(i, &self.declared_scripts, || ());
+                let script = self.check_identifier_uniqueness(i, &self.declared_scripts, || ());
+                self.declared_scripts.push(script);
                 self.check_stmt(s);
                 self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels);
             }
             Stmt::Block(s) => self.check_stmts(s),
-            Stmt::Label(l) => self.check_identifier_uniqueness(l, &self.declared_labels, || {
+            Stmt::Label(l) => self.declared_labels.push(self.check_identifier_uniqueness(l, &self.declared_labels, || {
                 if self.declared_labels.len() >= 16 {
                     panic!("Cannot have more than 16 labels per script");
                 }
-            }),
+            })),
             Stmt::Goto(l) => match l {
                 Literal::Identifier(i) => {
                     if !self.referenced_labels.contains(&i) {
@@ -196,11 +197,11 @@ impl<'a> SemChecker<'a> {
     }
 
     fn check_identifier_uniqueness<F>(
-        &mut self,
+        &self,
         ident: &'a Literal,
         declared: &Vec<&'a String>,
         callback: F,
-    ) where
+    ) -> &'a String where
         F: FnOnce() -> (),
     {
         callback();
@@ -214,7 +215,7 @@ impl<'a> SemChecker<'a> {
             panic!("Script {} redeclared", name);
         }
 
-        declared.push(name);
+        return name;
     }
 
     fn verify_referenced_identifiers(
