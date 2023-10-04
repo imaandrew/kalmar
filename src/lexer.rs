@@ -243,7 +243,7 @@ impl Literal {
     pub fn as_u32(&self) -> u32 {
         match self {
             Self::Number(n) => n.as_u32(),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }

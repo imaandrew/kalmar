@@ -93,8 +93,8 @@ fn collapse_expr(expr: &mut Expr) {
             }
         },
         Expr::FuncCall(_, a) => {
-            for mut arg in a {
-                collapse_expr(&mut arg);
+            for arg in a {
+                collapse_expr(arg);
             }
         }
         Expr::Array(_, idx) => {

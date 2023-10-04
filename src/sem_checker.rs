@@ -42,11 +42,15 @@ impl<'a> SemChecker<'a> {
                 self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels);
             }
             Stmt::Block(s) => self.check_stmts(s),
-            Stmt::Label(l) => self.declared_labels.push(self.check_identifier_uniqueness(l, &self.declared_labels, || {
-                if self.declared_labels.len() >= 16 {
-                    panic!("Cannot have more than 16 labels per script");
-                }
-            })),
+            Stmt::Label(l) => self.declared_labels.push(self.check_identifier_uniqueness(
+                l,
+                &self.declared_labels,
+                || {
+                    if self.declared_labels.len() >= 16 {
+                        panic!("Cannot have more than 16 labels per script");
+                    }
+                },
+            )),
             Stmt::Goto(l) => match l {
                 Literal::Identifier(i) => {
                     if !self.referenced_labels.contains(&i) {
@@ -83,8 +87,14 @@ impl<'a> SemChecker<'a> {
             Stmt::Expr(e) => {
                 self.check_expr(e);
             }
-            Stmt::Switch(e, s) => self.check_stmt(s),
-            Stmt::CaseStmt(e, s) => self.check_stmt(s),
+            Stmt::Switch(e, s) => {
+                self.check_expr(e);
+                self.check_stmt(s);
+            }
+            Stmt::CaseStmt(e, s) => {
+                self.check_expr(e);
+                self.check_stmt(s);
+            }
             Stmt::Return | Stmt::BreakCase | Stmt::BreakLoop => (),
         };
     }
@@ -199,10 +209,11 @@ impl<'a> SemChecker<'a> {
     fn check_identifier_uniqueness<F>(
         &self,
         ident: &'a Literal,
-        declared: &Vec<&'a String>,
+        declared: &[&'a String],
         callback: F,
-    ) -> &'a String where
-        F: FnOnce() -> (),
+    ) -> &'a String
+    where
+        F: FnOnce(),
     {
         callback();
 
@@ -215,14 +226,10 @@ impl<'a> SemChecker<'a> {
             panic!("Script {} redeclared", name);
         }
 
-        return name;
+        name
     }
 
-    fn verify_referenced_identifiers(
-        &self,
-        declared: &Vec<&'a String>,
-        referenced: &Vec<&'a String>,
-    ) {
+    fn verify_referenced_identifiers(&self, declared: &[&'a String], referenced: &Vec<&'a String>) {
         let mut undeclared_references = vec![];
         for ident in referenced {
             if !declared.contains(ident) {
