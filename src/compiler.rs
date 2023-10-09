@@ -1,7 +1,108 @@
+//use num_enum::TryFromPrimitive;
 use std::collections::HashMap;
 
 use crate::lexer::Literal;
 use crate::parser::{BinOp, Expr, Stmt, UnOp};
+
+//#[derive(TryFromPrimitive)]
+//#[repr(u8)]
+enum Op {
+    InternalFetch,
+    End,
+    Return,
+    Label,
+    Goto,
+    Loop,
+    EndLoop,
+    BreakLoop,
+    WaitFrames,
+    WaitSecs,
+    IfEq,
+    IfNe,
+    IfLt,
+    IfGt,
+    IfLe,
+    IfGe,
+    IfFlag,
+    IfNotFlag,
+    Else,
+    EndIf,
+    Switch,
+    SwitchConst,
+    CaseEq,
+    CaseNe,
+    CaseLt,
+    CaseGt,
+    CaseLe,
+    CaseGe,
+    CaseDefault,
+    CaseOrEq,
+    CaseAndEq,
+    CaseFlag,
+    EndCaseGroup,
+    CaseRange,
+    BreakSwitch,
+    EndSwitch,
+    Set,
+    SetConst,
+    SetF,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    AddF,
+    SubF,
+    MulF,
+    DivF,
+    UseBuf,
+    BufRead1,
+    BufRead2,
+    BufRead3,
+    BufRead4,
+    BufPeek,
+    UseFBuf,
+    FBufRead1,
+    FBufRead2,
+    FBufRead3,
+    FBufRead4,
+    FBufPeek,
+    UseArray,
+    UseFlags,
+    MallocArray,
+    BitwiseAnd,
+    BitwiseAndConst,
+    BitwiseOr,
+    BitwiseOrConst,
+    Call,
+    Exec,
+    ExecGetTid,
+    ExecWait,
+    BindTrigger,
+    Unbind,
+    KillThread,
+    Jump,
+    SetPriority,
+    SetTimescale,
+    SetGroup,
+    BindPadlock,
+    SuspendGroup,
+    ResumeGroup,
+    SuspendOthers,
+    ResumeOthers,
+    SuspendThread,
+    ResumeThread,
+    IsThreadRunning,
+    Thread,
+    EndThread,
+    ChildThread,
+    EndChildThread,
+    DebugLog,
+    DebugPrintVar,
+    Op92,
+    Op93,
+    Op94,
+}
 
 pub struct Compiler {
     syms: HashMap<String, u32>,
@@ -38,29 +139,29 @@ impl Compiler {
         match stmt {
             Stmt::Script(_, s) => {
                 bin.append(&mut self.compile_stmt(*s));
-                bin.push(1);
+                bin.push(Op::End as u32);
             }
             Stmt::Block(stmts) => {
                 for s in stmts {
-                    bin.append(&mut self.compile_stmt(s))
+                    bin.append(&mut self.compile_stmt(s));
                 }
             }
-            Stmt::Return => bin.push(2),
+            Stmt::Return => bin.push(Op::Return as u32),
             Stmt::Label(n) => {
-                bin.push(3);
-                bin.push(n.as_u32())
+                bin.push(Op::Label as u32);
+                bin.push(n.as_u32());
             }
             Stmt::Goto(n) => {
-                bin.push(4);
-                bin.push(n.as_u32())
+                bin.push(Op::Goto as u32);
+                bin.push(n.as_u32());
             }
             Stmt::Loop(e, s) => {
-                bin.push(5);
+                bin.push(Op::Loop as u32);
                 bin.append(&mut self.compile_expr(e));
                 bin.append(&mut self.compile_stmt(*s));
-                bin.push(6)
+                bin.push(Op::EndLoop as u32)
             }
-            Stmt::BreakLoop => bin.push(7),
+            Stmt::BreakLoop => bin.push(Op::BreakLoop as u32),
             Stmt::IfElse(i, e) => {
                 bin.append(&mut self.compile_stmt(*i));
                 for expr in e {
@@ -72,6 +173,19 @@ impl Compiler {
                     Expr::BinOp(_, _, _) => bin.append(&mut self.compile_expr(e)),
                     Expr::UnOp(UnOp::Bang, e) => {
                         let mut e = self.compile_expr(*e);
+                        /*
+                        e[0] = match Op::try_from(e[0] as u8).unwrap() {
+                            Op::IfEq => Op::IfNe,
+                            Op::IfNe => Op::IfEq,
+                            Op::IfLt => Op::IfGe,
+                            Op::IfGt => Op::IfLe,
+                            Op::IfLe => Op::IfGt,
+                            Op::IfGe => Op::IfLt,
+                            Op::IfFlag => Op::IfNotFlag,
+                            Op::IfNotFlag => Op::IfFlag,
+                            _ => unreachable!(),
+                        } as u32;
+                        */
                         e[0] = match e[0] {
                             0xa => 0xb,
                             0xb => 0xa,
@@ -88,73 +202,77 @@ impl Compiler {
                     _ => unreachable!(),
                 }
                 bin.append(&mut self.compile_stmt(*s));
-                bin.push(0x13)
+                bin.push(Op::EndIf as u32)
             }
             Stmt::Else(Some(i), None) => {
-                bin.push(0x12);
+                bin.push(Op::Else as u32);
                 bin.append(&mut self.compile_stmt(*i))
             }
             Stmt::Else(None, Some(s)) => {
-                bin.push(0x12);
+                bin.push(Op::Else as u32);
                 bin.append(&mut self.compile_stmt(*s));
-                bin.push(0x13)
+                bin.push(Op::EndIf as u32)
             }
             Stmt::Switch(e, s) => {
-                bin.push(0x14);
+                match e {
+                    Expr::Array(_, _) => bin.push(Op::Switch as u32),
+                    Expr::Identifier(_) => bin.push(Op::SwitchConst as u32),
+                    _ => panic!(),
+                }
                 bin.append(&mut self.compile_expr(e));
                 bin.append(&mut self.compile_stmt(*s));
-                bin.push(0x23);
+                bin.push(Op::EndSwitch as u32);
             }
             Stmt::CaseStmt(e, s) => {
                 match e {
                     Expr::UnOp(op, e) => {
                         match op {
-                            UnOp::Equal => bin.push(0x16),
-                            UnOp::NotEqual => bin.push(0x17),
-                            UnOp::Less => bin.push(0x18),
-                            UnOp::Greater => bin.push(0x19),
-                            UnOp::LessEq => bin.push(0x1a),
-                            UnOp::GreaterEq => bin.push(0x1b),
-                            UnOp::Ampersand => bin.push(0x10),
+                            UnOp::Equal => bin.push(Op::CaseEq as u32),
+                            UnOp::NotEqual => bin.push(Op::CaseNe as u32),
+                            UnOp::Less => bin.push(Op::CaseLt as u32),
+                            UnOp::Greater => bin.push(Op::CaseGt as u32),
+                            UnOp::LessEq => bin.push(Op::CaseLe as u32),
+                            UnOp::GreaterEq => bin.push(Op::CaseGe as u32),
+                            UnOp::Ampersand => bin.push(Op::CaseFlag as u32),
                             _ => unreachable!(),
                         }
                         bin.append(&mut self.compile_expr(*e));
                     }
                     Expr::BinOp(op, e, b) => {
                         if matches!(op, BinOp::Or | BinOp::And) {
-                            bin.push(0x16);
+                            bin.push(Op::CaseEq as u32);
                         } else if op == BinOp::Range {
-                            bin.push(0x21);
+                            bin.push(Op::CaseRange as u32);
                         }
                         bin.append(&mut self.compile_expr(*e));
                         match op {
-                            BinOp::Or => bin.push(0x1d),
-                            BinOp::And => bin.push(0x1e),
+                            BinOp::Or => bin.push(Op::CaseOrEq as u32),
+                            BinOp::And => bin.push(Op::CaseAndEq as u32),
                             _ => (),
                         }
                         bin.append(&mut self.compile_expr(*b));
                         if matches!(op, BinOp::Or | BinOp::And) {
-                            bin.push(0x20);
+                            bin.push(Op::EndCaseGroup as u32);
                         }
                     }
                     _ => unreachable!(),
                 }
                 bin.append(&mut self.compile_stmt(*s));
             }
-            Stmt::BreakCase => bin.push(0x22),
+            Stmt::BreakCase => bin.push(Op::BreakSwitch as u32),
             Stmt::Expr(e) => bin.append(&mut self.compile_expr(e)),
             Stmt::Thread(s) => {
-                bin.push(0x56);
+                bin.push(Op::Thread as u32);
                 bin.append(&mut self.compile_stmt(*s));
-                bin.push(0x57);
+                bin.push(Op::EndThread as u32);
             }
             Stmt::ChildThread(s) => {
-                bin.push(0x58);
+                bin.push(Op::ChildThread as u32);
                 bin.append(&mut self.compile_stmt(*s));
-                bin.push(0x59);
+                bin.push(Op::EndChildThread as u32);
             }
             Stmt::Jump(i) => {
-                bin.push(0x4a);
+                bin.push(Op::Jump as u32);
                 bin.push(match i {
                     Literal::Number(n) => n.as_u32(),
                     _ => todo!(),
@@ -179,71 +297,84 @@ impl Compiler {
                 let e = self.compile_expr(*expr);
                 assert_eq!(e.len(), 1);
                 match op {
-                    UnOp::Minus => bin.push(i32_to_u32(*e.first().unwrap() as i32)),
+                    UnOp::Minus => bin.push(*e.first().unwrap() as i32 as u32),
                     _ => todo!(),
                 }
             }
             Expr::BinOp(op, l, r) => match op {
-                BinOp::BitOr => {
-                    bin.append(&mut self.compile_expr(*l));
-                    bin.push(0x1d);
-                    bin.append(&mut self.compile_expr(*r));
-                }
                 BinOp::BitAnd => {
                     bin.append(&mut self.compile_expr(*l));
-                    bin.push(0x1e);
+                    bin.push(Op::IfFlag as u32);
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::Range => {
-                    bin.push(0x21);
+                    bin.push(Op::CaseRange as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::PlusEq => {
                     if let Expr::Identifier(Literal::Number(n)) = *r {
-                        bin.push(if n.is_float() { 0x2c } else { 0x27 });
+                        bin.push(if n.is_float() {
+                            Op::AddF as u32
+                        } else {
+                            Op::Add as u32
+                        });
                     } else {
-                        bin.push(0x27);
+                        bin.push(Op::Add as u32);
                     }
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::MinusEq => {
                     if let Expr::Identifier(Literal::Number(n)) = *r {
-                        bin.push(if n.is_float() { 0x2d } else { 0x28 });
+                        bin.push(if n.is_float() {
+                            Op::SubF as u32
+                        } else {
+                            Op::Sub as u32
+                        });
                     } else {
-                        bin.push(0x28);
+                        bin.push(Op::Sub as u32);
                     }
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::StarEq => {
                     if let Expr::Identifier(Literal::Number(n)) = *r {
-                        bin.push(if n.is_float() { 0x2e } else { 0x29 });
+                        bin.push(if n.is_float() {
+                            Op::MulF as u32
+                        } else {
+                            Op::Mul as u32
+                        });
                     } else {
-                        bin.push(0x29);
+                        bin.push(Op::Mul as u32);
                     }
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::DivEq => {
                     if let Expr::Identifier(Literal::Number(n)) = *r {
-                        bin.push(if n.is_float() { 0x2f } else { 0x2a });
+                        bin.push(if n.is_float() {
+                            Op::DivF as u32
+                        } else {
+                            Op::Div as u32
+                        });
                     } else {
-                        bin.push(0x2a);
+                        bin.push(Op::Div as u32);
                     }
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::ModEq => {
-                    bin.push(0x2b);
+                    bin.push(Op::Mod as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::AndEq => {
                     match *r {
-                        Expr::Array(_, _) => bin.push(0x3f),
-                        Expr::Identifier(Literal::Number(_)) => bin.push(0x40),
+                        Expr::Array(_, _) => bin.push(Op::BitwiseAnd as u32),
+                        Expr::Identifier(Literal::Number(_)) => {
+                            bin.push(Op::BitwiseAndConst as u32)
+                        }
                         _ => unreachable!(),
                     }
                     bin.append(&mut self.compile_expr(*l));
@@ -251,8 +382,8 @@ impl Compiler {
                 }
                 BinOp::OrEq => {
                     match *r {
-                        Expr::Array(_, _) => bin.push(0x41),
-                        Expr::Identifier(Literal::Number(_)) => bin.push(0x42),
+                        Expr::Array(_, _) => bin.push(Op::BitwiseOr as u32),
+                        Expr::Identifier(Literal::Number(_)) => bin.push(Op::BitwiseOrConst as u32),
                         _ => unreachable!(),
                     }
                     bin.append(&mut self.compile_expr(*l));
@@ -261,66 +392,71 @@ impl Compiler {
                 BinOp::Assign => match *r {
                     Expr::Identifier(Literal::Number(n)) => {
                         if n.is_float() {
-                            bin.push(0x26);
+                            bin.push(Op::SetF as u32);
                         } else {
-                            bin.push(0x24);
+                            bin.push(Op::Set as u32);
                         }
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
                     Expr::Array(_, _) => {
-                        bin.push(0x24);
+                        bin.push(Op::Set as u32);
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
                     Expr::UnOp(UnOp::Ampersand, r) => {
-                        bin.push(0x25);
+                        bin.push(Op::SetConst as u32);
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
                     _ => unreachable!(),
                 },
                 BinOp::Equal => {
-                    bin.push(0xa);
+                    bin.push(Op::IfEq as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::NotEqual => {
-                    bin.push(0xb);
+                    bin.push(Op::IfNe as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::Less => {
-                    bin.push(0xc);
+                    bin.push(Op::IfLt as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::Greater => {
-                    bin.push(0xd);
+                    bin.push(Op::IfGt as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::LessEq => {
-                    bin.push(0xe);
+                    bin.push(Op::IfLe as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::GreaterEq => {
-                    bin.push(0xf);
+                    bin.push(Op::IfGe as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::And => {
-                    bin.push(0x10);
+                    bin.push(Op::CaseAndEq as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::Or => {
-                    bin.push(0x11);
+                    bin.push(Op::CaseOrEq as u32);
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::Plus | BinOp::Minus | BinOp::Star | BinOp::Div | BinOp::Mod => {
+                BinOp::Plus
+                | BinOp::Minus
+                | BinOp::Star
+                | BinOp::Div
+                | BinOp::Mod
+                | BinOp::BitOr => {
                     unreachable!()
                 }
             },
@@ -347,7 +483,7 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(arg));
                 }
             }
-            Expr::Default => bin.push(0x1c),
+            Expr::Default => bin.push(Op::CaseDefault as u32),
         }
 
         bin
@@ -388,8 +524,4 @@ fn get_var(ident: &str, index: u32) -> u32 {
         "game_byte" => index + 170000000,
         _ => todo!(),
     }
-}
-
-fn i32_to_u32(int: i32) -> u32 {
-    u32::from_be_bytes(int.to_be_bytes())
 }
