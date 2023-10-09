@@ -474,11 +474,13 @@ impl Compiler {
                 bin.push(get_var(&ident, index));
             }
             Expr::FuncCall(func, args) => {
+                bin.push(Op::Call as u32);
                 let addr = match func {
                     Literal::Identifier(i) => self.get_func(&i).unwrap(),
                     _ => unreachable!(),
                 };
                 bin.push(addr);
+                bin.push(args.len().try_into().unwrap());
                 for arg in args {
                     bin.append(&mut self.compile_expr(arg));
                 }
