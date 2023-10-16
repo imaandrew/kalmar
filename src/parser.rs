@@ -1,4 +1,4 @@
-use crate::lexer::{Lexer, Literal, Token, TokenKind};
+use crate::lexer::{Lexer, Literal, Token, TokenKind, Number};
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -387,12 +387,18 @@ impl Parser {
                 self.assert(TokenKind::RParen);
                 expr
             }
-            _ => panic!(),
+            t => panic!("Invalid token: {:?}", t),
         };
 
         loop {
             let t = self.pop();
-            let op = BinOp::try_from(t.kind).unwrap();
+            let op = match BinOp::try_from(t.kind) {
+                Ok(op) => op,
+                Err(_) => {
+                    self.tokens.push(t);
+                    break;
+                },
+            };
 
             if op.precedence().0 < min_prec {
                 break;
