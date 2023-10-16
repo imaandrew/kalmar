@@ -45,7 +45,10 @@ fn collapse_stmt(stmt: &mut Stmt) {
 macro_rules! generate_binops {
     ($expr:ident, $($binop:ident, $op:tt, $type:ident),*) => {
         match $expr {
-            Expr::BinOp(op, l, r) => match op {
+            Expr::BinOp(op, l, r) => {
+                collapse_expr(l);
+                collapse_expr(r);
+                match op {
                 $(
                     BinOp::$binop => match (l.as_ref(), r.as_ref()) {
                         (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
@@ -55,7 +58,7 @@ macro_rules! generate_binops {
                     }
                 )*
                 _ => (),
-            },
+            }},
             _ => (),
         }
     };
