@@ -371,7 +371,7 @@ impl Parser {
             },
             TokenKind::Minus
             | TokenKind::Bang
-            | TokenKind::Eq
+            | TokenKind::EqEq
             | TokenKind::BangEq
             | TokenKind::Greater
             | TokenKind::GreaterEq
