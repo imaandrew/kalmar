@@ -2,6 +2,7 @@ use clap::Parser;
 use kalmar::compiler;
 use kalmar::optimizer;
 use kalmar::parser;
+use kalmar::sem_checker;
 use std::{error, fs, path::PathBuf};
 
 #[derive(Parser)]
@@ -34,6 +35,9 @@ fn main() {
     let mut stmts = parser.parse(cli.verbose);
 
     println!("{:#?}", stmts);
+
+    let mut sem = sem_checker::SemChecker::default();
+    sem.check_stmts(&stmts);
 
     optimizer::optimize_stmts(&mut stmts);
     println!("{:#?}", stmts);

@@ -22,6 +22,23 @@ pub struct SemChecker<'a> {
     referenced_labels: Vec<&'a String>,
 }
 
+impl Default for SemChecker<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SemChecker<'_> {
+    pub fn new() -> Self {
+        Self {
+            declared_scripts: vec![],
+            referenced_scripts: vec![],
+            declared_labels: vec![],
+            referenced_labels: vec![],
+        }
+    }
+}
+
 impl<'a> SemChecker<'a> {
     pub fn check_stmts(&mut self, stmts: &'a Vec<Stmt>) {
         for stmt in stmts {
