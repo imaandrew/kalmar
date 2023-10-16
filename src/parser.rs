@@ -267,7 +267,11 @@ impl Parser {
     }
 
     fn loop_statement(&mut self) -> Stmt {
-        let loop_count = self.expr(0);
+        let loop_count = if self.peek(TokenKind::LBrace) {
+            Expr::Identifier(Literal::Number(Number::Integer(0)))
+        } else {
+            self.expr(0)
+        };
 
         let block = self.block(Self::statement, true);
 
