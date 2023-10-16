@@ -1,4 +1,4 @@
-use crate::lexer::{Lexer, Literal, Token, TokenKind, Number};
+use crate::lexer::{Lexer, Literal, Number, Token, TokenKind};
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -61,13 +61,13 @@ impl TryFrom<TokenKind> for UnOp {
 impl UnOp {
     fn precedence(&self) -> (u8, u8) {
         match self {
-            Self::Bang | Self::Minus | Self::Ampersand | Self::New => (10, 9),
+            Self::Bang | Self::Minus | Self::Ampersand | Self::New => (20, 19),
             Self::Equal
             | Self::NotEqual
             | Self::Greater
             | Self::GreaterEq
             | Self::Less
-            | Self::LessEq => (20, 19),
+            | Self::LessEq => (10, 9),
         }
     }
 }
@@ -138,13 +138,13 @@ impl TryFrom<TokenKind> for BinOp {
 impl BinOp {
     fn precedence(&self) -> (u8, u8) {
         match self {
-            Self::Range | Self::Or | Self::And => (20, 21),
-            Self::Star | Self::Div | Self::Mod => (30, 31),
-            Self::Plus | Self::Minus => (40, 41),
-            Self::Greater | Self::GreaterEq | Self::Less | Self::LessEq => (50, 51),
-            Self::Equal | Self::NotEqual => (60, 61),
-            Self::BitAnd => (70, 71),
-            Self::BitOr => (80, 81),
+            Self::Range | Self::Or | Self::And => (90, 91),
+            Self::Star | Self::Div | Self::Mod => (80, 81),
+            Self::Plus | Self::Minus => (70, 71),
+            Self::Greater | Self::GreaterEq | Self::Less | Self::LessEq => (60, 61),
+            Self::Equal | Self::NotEqual => (50, 51),
+            Self::BitAnd => (40, 41),
+            Self::BitOr => (30, 31),
             Self::Assign
             | Self::PlusEq
             | Self::MinusEq
@@ -152,7 +152,7 @@ impl BinOp {
             | Self::DivEq
             | Self::ModEq
             | Self::OrEq
-            | Self::AndEq => (90, 89),
+            | Self::AndEq => (20, 19),
         }
     }
 }
@@ -397,7 +397,7 @@ impl Parser {
                 Err(_) => {
                     self.tokens.push(t);
                     break;
-                },
+                }
             };
 
             if op.precedence().0 < min_prec {
