@@ -255,7 +255,8 @@ impl Compiler {
                             bin.push(Op::EndCaseGroup as u32);
                         }
                     }
-                    _ => unreachable!(),
+                    Expr::Default => bin.push(Op::CaseDefault as u32),
+                    e => panic!("ERROR: {:?}", e),
                 }
                 bin.append(&mut self.compile_stmt(*s));
             }
