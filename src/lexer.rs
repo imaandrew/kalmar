@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     ops::{Add, BitAnd, Div, Mul, Neg, Rem, Sub},
     str::FromStr,
 };
@@ -148,6 +149,17 @@ pub enum Number {
     Float(f32),
 }
 
+impl Display for Number {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Number::Byte(x) => write!(f, "{}", x),
+            Number::Short(x) => write!(f, "{}", x),
+            Number::Integer(x) => write!(f, "{}", x),
+            Number::Float(x) => write!(f, "{}", x),
+        }
+    }
+}
+
 impl Number {
     pub fn as_u32(&self) -> u32 {
         match *self {
@@ -237,6 +249,17 @@ pub enum Literal {
     Str(String),
     Number(Number),
     Boolean(bool),
+}
+
+impl Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Identifier(s) => write!(f, "{}", s),
+            Literal::Str(s) => write!(f, "\"{}\"", s),
+            Literal::Number(n) => write!(f, "{}", n),
+            Literal::Boolean(b) => write!(f, "{}", b),
+        }
+    }
 }
 
 impl Literal {

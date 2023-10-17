@@ -28,13 +28,15 @@ fn masin() -> Result<(), Box<dyn error::Error>> {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    //let cli = Cli::parse();
     let data: String = fs::read_to_string("test.scr").unwrap().parse().unwrap();
     let mut parser = parser::Parser::new(&data);
 
-    let mut stmts = parser.parse(cli.verbose);
+    let mut stmts = parser.parse(false);
 
-    println!("{:#?}", stmts);
+    for s in &stmts {
+        println!("{}", s);
+    }
 
     let mut sem = sem_checker::SemChecker::default();
     sem.check_stmts(&stmts);

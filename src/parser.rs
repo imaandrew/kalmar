@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::lexer::{Lexer, Literal, Number, Token, TokenKind};
 
 #[derive(Debug)]
@@ -21,17 +23,106 @@ pub enum Stmt {
     CaseStmt(Expr, Box<Stmt>),
 }
 
-#[derive(Debug, Clone, Copy)]
+impl Display for Stmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn recursive_fmt(
+            f: &mut std::fmt::Formatter<'_>,
+            stmt: &Stmt,
+            indent_level: usize,
+        ) -> std::fmt::Result {
+            let indent = " ".repeat((indent_level + 1) * 2);
+            match stmt {
+                Stmt::Script(id, stmts) => {
+                    writeln!(f, "Script {}", id)?;
+                    recursive_fmt(f, stmts, indent_level)
+                }
+                Stmt::Block(stmts) => {
+                    for s in stmts {
+                        write!(f, "{}", indent)?;
+                        recursive_fmt(f, s, indent_level + 1)?;
+                    }
+                    Ok(())
+                }
+                Stmt::Return => writeln!(f, "Return"),
+                Stmt::BreakLoop => writeln!(f, "BreakLoop"),
+                Stmt::BreakCase => writeln!(f, "BreakCase"),
+                Stmt::Label(l) => writeln!(f, "Label {}", l),
+                Stmt::Goto(l) => writeln!(f, "Goto {}", l),
+                Stmt::Loop(e, s) => {
+                    writeln!(f, "Loop {}", e)?;
+                    recursive_fmt(f, s, indent_level)
+                }
+                Stmt::IfElse(i, e) => {
+                    recursive_fmt(f, i, indent_level)?;
+                    for s in e {
+                        let indent = " ".repeat(indent_level * 2);
+                        write!(f, "{}", indent)?;
+                        recursive_fmt(f, s, indent_level + 1)?;
+                    }
+
+                    Ok(())
+                }
+                Stmt::If(e, s) => {
+                    writeln!(f, "If {}", e)?;
+                    recursive_fmt(f, s, indent_level)
+                }
+                Stmt::Else(i, e) => {
+                    if let Some(i) = i {
+                        write!(f, "Else ")?;
+                        recursive_fmt(f, i, indent_level - 1)
+                    } else if let Some(e) = e {
+                        writeln!(f, "Else ")?;
+                        recursive_fmt(f, e, indent_level - 1)
+                    } else {
+                        panic!()
+                    }
+                }
+                Stmt::Jump(l) => writeln!(f, "Jump {}", l),
+                Stmt::Thread(s) => {
+                    writeln!(f, "Thread")?;
+                    recursive_fmt(f, s, indent_level)
+                }
+                Stmt::ChildThread(s) => {
+                    writeln!(f, "ChildThread")?;
+                    recursive_fmt(f, s, indent_level)
+                }
+                Stmt::Expr(e) => writeln!(f, "{}", e),
+                Stmt::Switch(e, s) => {
+                    writeln!(f, "Switch {}", e)?;
+                    recursive_fmt(f, s, indent_level)
+                }
+                Stmt::CaseStmt(e, s) => {
+                    writeln!(f, "Case {}", e)?;
+                    recursive_fmt(f, s, indent_level)
+                }
+            }
+        }
+
+        recursive_fmt(f, self, 0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, strum_macros::Display)]
 pub enum UnOp {
+    #[strum(serialize = "-")]
     Minus,
+    #[strum(serialize = "!")]
     Bang,
+    #[strum(serialize = "&")]
     Ampersand,
+    #[strum(serialize = "new")]
     New,
+    #[strum(serialize = "==")]
     Equal,
+    #[strum(serialize = "!=")]
     NotEqual,
+    #[strum(serialize = ">")]
     Greater,
+    #[strum(serialize = ">=")]
     GreaterEq,
+    #[strum(serialize = "<")]
     Less,
+    #[strum(serialize = "<=")]
     LessEq,
 }
 
@@ -72,31 +163,55 @@ impl UnOp {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, strum_macros::Display)]
 pub enum BinOp {
+    #[strum(serialize = "+")]
     Plus,
+    #[strum(serialize = "-")]
     Minus,
+    #[strum(serialize = "*")]
     Star,
+    #[strum(serialize = "/")]
     Div,
+    #[strum(serialize = "%")]
     Mod,
+    #[strum(serialize = "|")]
     BitOr,
+    #[strum(serialize = "&")]
     BitAnd,
+    #[strum(serialize = "+=")]
     PlusEq,
+    #[strum(serialize = "-=")]
     MinusEq,
+    #[strum(serialize = "*=")]
     StarEq,
+    #[strum(serialize = "/=")]
     DivEq,
+    #[strum(serialize = "%=")]
     ModEq,
+    #[strum(serialize = "|=")]
     OrEq,
+    #[strum(serialize = "&=")]
     AndEq,
+    #[strum(serialize = "==")]
     Equal,
+    #[strum(serialize = "!=")]
     NotEqual,
+    #[strum(serialize = ">")]
     Greater,
+    #[strum(serialize = ">=")]
     GreaterEq,
+    #[strum(serialize = "<")]
     Less,
+    #[strum(serialize = "<=")]
     LessEq,
+    #[strum(serialize = "..")]
     Range,
+    #[strum(serialize = "=")]
     Assign,
+    #[strum(serialize = "or")]
     Or,
+    #[strum(serialize = "and")]
     And,
 }
 
@@ -165,6 +280,25 @@ pub enum Expr {
     BinOp(BinOp, Box<Expr>, Box<Expr>),
     FuncCall(Literal, Vec<Expr>),
     Default,
+}
+
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expr::Identifier(l) => write!(f, "{}", l),
+            Expr::Array(l, e) => write!(f, "{}[{}]", l, e),
+            Expr::UnOp(op, e) => f.write_fmt(format_args!("{} {}", op, e)),
+            Expr::BinOp(op, l, r) => f.write_fmt(format_args!("{} {} {}", l, op, r)),
+            Expr::FuncCall(l, args) => {
+                write!(f, "{} ", l)?;
+                for a in args {
+                    write!(f, "( {} ) ", a)?
+                }
+                Ok(())
+            }
+            Expr::Default => write!(f, "Default"),
+        }
+    }
 }
 
 pub struct Parser {
