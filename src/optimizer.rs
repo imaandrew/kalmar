@@ -14,7 +14,7 @@ fn collapse_stmt(stmt: &mut Stmt) {
         Stmt::Script(_, s) => collapse_stmt(s),
         Stmt::Block(s) => optimize_stmts(s),
         Stmt::Loop(e, s) => {
-            collapse_expr(e);
+            fold_expr_op(e);
             collapse_stmt(s);
         }
         Stmt::IfElse(i, e) => {
@@ -22,20 +22,20 @@ fn collapse_stmt(stmt: &mut Stmt) {
             optimize_stmts(e);
         }
         Stmt::If(e, s) => {
-            collapse_expr(e);
+            fold_expr_op(e);
             collapse_stmt(s);
         }
         Stmt::Else(Some(i), None) => collapse_stmt(i),
         Stmt::Else(None, Some(s)) => collapse_stmt(s),
         Stmt::Thread(s) => collapse_stmt(s),
         Stmt::ChildThread(s) => collapse_stmt(s),
-        Stmt::Expr(e) => collapse_expr(e),
+        Stmt::Expr(e) => fold_expr_op(e),
         Stmt::Switch(e, s) => {
-            collapse_expr(e);
+            fold_expr_op(e);
             collapse_stmt(s);
         }
         Stmt::CaseStmt(e, s) => {
-            collapse_expr(e);
+            fold_expr_op(e);
             collapse_stmt(s);
         }
         _ => (),
@@ -46,8 +46,8 @@ macro_rules! generate_binops {
     ($expr:ident, $($binop:ident, $op:tt, $type:ident),*) => {
         match $expr {
             Expr::BinOp(op, l, r) => {
-                collapse_expr(l);
-                collapse_expr(r);
+                fold_expr_op(l);
+                fold_expr_op(r);
                 match op {
                 $(
                     BinOp::$binop => match (l.as_ref(), r.as_ref()) {
@@ -64,7 +64,7 @@ macro_rules! generate_binops {
     };
 }
 
-fn collapse_expr(expr: &mut Expr) {
+fn fold_expr_op(expr: &mut Expr) {
     generate_binops!(
         expr,
         Plus, +, Number,
@@ -88,20 +88,20 @@ fn collapse_expr(expr: &mut Expr) {
                     *expr = Expr::Identifier(Literal::Number(-*n))
                 }
                 _ => {
-                    collapse_expr(e);
+                    fold_expr_op(e);
                 }
             },
             _ => {
-                collapse_expr(e);
+                fold_expr_op(e);
             }
         },
         Expr::FuncCall(_, a) => {
             for arg in a {
-                collapse_expr(arg);
+                fold_expr_op(arg);
             }
         }
         Expr::Array(_, idx) => {
-            collapse_expr(idx);
+            fold_expr_op(idx);
         }
         _ => (),
     };
