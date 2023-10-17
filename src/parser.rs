@@ -535,6 +535,7 @@ impl Parser {
             };
 
             if op.precedence().0 < min_prec {
+                self.tokens.push(t);
                 break;
             }
 
