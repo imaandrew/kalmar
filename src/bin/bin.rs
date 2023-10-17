@@ -39,7 +39,7 @@ fn main() {
     }
 
     let mut sem = sem_checker::SemChecker::default();
-    sem.check_stmts(&stmts);
+    sem.check_scripts(&stmts);
 
     optimizer::optimize_stmts(&mut stmts);
     println!("{:#?}", stmts);

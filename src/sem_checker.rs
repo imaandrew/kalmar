@@ -40,12 +40,15 @@ impl SemChecker<'_> {
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn check_stmts(&mut self, stmts: &'a Vec<Stmt>) {
+    pub fn check_scripts(&mut self, stmts: &'a Vec<Stmt>) {
+        self.check_stmts(stmts);
+        self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts);
+    }
+
+    fn check_stmts(&mut self, stmts: &'a Vec<Stmt>) {
         for stmt in stmts {
             self.check_stmt(stmt);
         }
-
-        self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts);
     }
 
     fn check_stmt(&mut self, stmt: &'a Stmt) {
@@ -98,7 +101,14 @@ impl<'a> SemChecker<'a> {
                     self.check_stmt(e);
                 }
             }
-            Stmt::Jump(_) => unimplemented!(),
+            Stmt::Jump(l) => match l {
+                Literal::Identifier(i) => {
+                    if !self.referenced_scripts.contains(&i) {
+                        self.referenced_scripts.push(i);
+                    }
+                }
+                _ => panic!("Invalid jump target: {:?}", l),
+            },
             Stmt::Thread(s) => self.check_stmt(s),
             Stmt::ChildThread(s) => self.check_stmt(s),
             Stmt::Expr(e) => {
@@ -255,7 +265,7 @@ impl<'a> SemChecker<'a> {
         }
 
         if !undeclared_references.is_empty() {
-            panic!("{:?}", undeclared_references);
+            panic!("Undeclared references to: {:?}", undeclared_references);
         }
     }
 }
