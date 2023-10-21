@@ -122,7 +122,7 @@ impl<'a> SemChecker<'a> {
                 self.check_expr(e);
                 self.check_stmt(s);
             }
-            Stmt::Return | Stmt::BreakCase | Stmt::BreakLoop => (),
+            Stmt::Return | Stmt::BreakCase | Stmt::BreakLoop | Stmt::Empty => (),
         };
     }
 

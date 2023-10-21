@@ -279,7 +279,7 @@ impl Compiler {
                     _ => todo!(),
                 });
             }
-            Stmt::Else(_, _) => unreachable!(),
+            Stmt::Else(_, _) | Stmt::Empty => unreachable!(),
         }
 
         bin

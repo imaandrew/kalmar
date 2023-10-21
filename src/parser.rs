@@ -21,6 +21,13 @@ pub enum Stmt {
     Expr(Expr),
     Switch(Expr, Box<Stmt>),
     CaseStmt(Expr, Box<Stmt>),
+    Empty,
+}
+
+impl Default for Stmt {
+    fn default() -> Self {
+        Self::Empty
+    }
 }
 
 impl Display for Stmt {
@@ -95,6 +102,7 @@ impl Display for Stmt {
                     writeln!(f, "Case {}", e)?;
                     recursive_fmt(f, s, indent_level)
                 }
+                Stmt::Empty => writeln!(f, "Empty"),
             }
         }
 
