@@ -309,6 +309,12 @@ impl Lexer {
                 Some(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
             }
             '=' | '!' | '>' | '<' | '+' | '-' | '*' | '/' | '%' | '|' | '&' | '.' => {
+                if c == '/' && self.peek() == '/' {
+                    while self.peek() != '\n' && self.peek() != '\0' {
+                        self.next();
+                    }
+                    return self.lex_token();
+                }
                 let x = format!("{}{}", c, self.peek());
                 if let Ok(kind) = TokenKind::from_str(&x) {
                     self.curr += 1;
