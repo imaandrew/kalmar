@@ -106,6 +106,8 @@ enum Op {
 
 pub struct Compiler {
     syms: HashMap<String, u32>,
+    labels: HashMap<String, u32>,
+    num_labels: u32,
 }
 
 impl Default for Compiler {
@@ -118,6 +120,8 @@ impl Compiler {
     pub fn new() -> Self {
         Compiler {
             syms: HashMap::new(),
+            labels: HashMap::new(),
+            num_labels: 0,
         }
     }
 
@@ -125,7 +129,7 @@ impl Compiler {
         self.syms = syms;
     }
 
-    pub fn compile(&self, stmts: Vec<Stmt>) -> Vec<u32> {
+    pub fn compile(&mut self, stmts: Vec<Stmt>) -> Vec<u32> {
         let mut code = vec![];
         for s in stmts {
             code.append(&mut self.compile_stmt(s));
@@ -134,7 +138,7 @@ impl Compiler {
         code
     }
 
-    fn compile_stmt(&self, stmt: Stmt) -> Vec<u32> {
+    fn compile_stmt(&mut self, stmt: Stmt) -> Vec<u32> {
         let mut bin = vec![];
         match stmt {
             Stmt::Script(_, s) => {
@@ -148,12 +152,22 @@ impl Compiler {
             }
             Stmt::Return => bin.push(Op::Return as u32),
             Stmt::Label(n) => {
+                let lbl = match n {
+                    Literal::Identifier(i) => i,
+                    _ => panic!(),
+                };
+                self.labels.insert(lbl, self.num_labels);
                 bin.push(Op::Label as u32);
-                bin.push(n.as_u32());
+                bin.push(self.num_labels);
+                self.num_labels += 1;
             }
             Stmt::Goto(n) => {
+                let lbl = match n {
+                    Literal::Identifier(i) => i,
+                    _ => panic!(),
+                };
                 bin.push(Op::Goto as u32);
-                bin.push(n.as_u32());
+                bin.push(*self.labels.get(&lbl).unwrap());
             }
             Stmt::Loop(e, s) => {
                 bin.push(Op::Loop as u32);

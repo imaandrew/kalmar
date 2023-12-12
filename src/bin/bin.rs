@@ -44,7 +44,7 @@ fn main() {
     optimizer::optimize_stmts(&mut stmts);
     println!("{:#?}", stmts);
 
-    let compiler = compiler::Compiler::new();
+    let mut compiler = compiler::Compiler::new();
     let code = compiler.compile(stmts);
 
     code.iter().for_each(|x| println!("{:08x?}", x));
