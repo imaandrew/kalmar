@@ -522,6 +522,20 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(arg));
                 }
             }
+            Expr::ArrayAssign(ident, expr) => {
+                let ident = match ident {
+                    Literal::Identifier(i) => i,
+                    _ => unreachable!(),
+                };
+
+                match ident.as_str() {
+                    "buffer" => bin.push(Op::UseBuf as u32),
+                    "array" => bin.push(Op::UseArray as u32),
+                    "flag_array" => bin.push(Op::UseFlags as u32),
+                    _ => panic!(),
+                }
+                bin.append(&mut self.compile_expr(*expr));
+            }
             Expr::Default => bin.push(Op::CaseDefault as u32),
         }
 

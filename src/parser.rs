@@ -287,6 +287,7 @@ pub enum Expr {
     UnOp(UnOp, Box<Expr>),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
     FuncCall(Literal, Vec<Expr>),
+    ArrayAssign(Literal, Box<Expr>),
     Default,
 }
 
@@ -305,6 +306,7 @@ impl Display for Expr {
                 Ok(())
             }
             Expr::Default => write!(f, "Default"),
+            Expr::ArrayAssign(l, e) => write!(f, "{} = {}", l, e),
         }
     }
 }
@@ -547,6 +549,20 @@ impl Parser {
             }
 
             let right = self.expr(op.precedence().1);
+            if op == BinOp::Assign {
+                match &left {
+                    Expr::Identifier(Literal::Identifier(s)) => {
+                        if matches!(s.as_str(), "buffer" | "array" | "flag_array") {
+                            left = Expr::ArrayAssign(
+                                Literal::Identifier(s.to_string()),
+                                Box::new(right),
+                            );
+                            continue;
+                        }
+                    }
+                    _ => (),
+                }
+            }
             left = Expr::BinOp(op, Box::new(left), Box::new(right));
         }
         left

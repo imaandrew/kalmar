@@ -153,6 +153,10 @@ impl<'a> SemChecker<'a> {
                 }
                 Type::Empty
             }
+            Expr::ArrayAssign(_, e) => {
+                assert!(matches!(self.check_expr(e), Type::Integer | Type::Var));
+                Type::Assign
+            }
             Expr::Default => Type::Case,
         }
     }
