@@ -466,7 +466,9 @@ impl Compiler {
                     let mut num_vars = vars.len();
                     let mut vars = vars.iter();
                     for i in (1..5usize).rev() {
-                        if num_vars == 0 { break };
+                        if num_vars == 0 {
+                            break;
+                        };
                         let op = Op::BufRead1 as usize - 1 + i;
                         let num_times = num_vars / i;
                         num_vars %= i;
@@ -517,7 +519,13 @@ impl Compiler {
             "wait" => Some(Op::WaitFrames as u32),
             "wait_sec" => Some(Op::WaitSecs as u32),
             "alloc" => Some(Op::MallocArray as u32),
-            "exec" => if returns_val { Some(Op::ExecGetTid as u32) } else {Some(Op::Exec as u32)},
+            "exec" => {
+                if returns_val {
+                    Some(Op::ExecGetTid as u32)
+                } else {
+                    Some(Op::Exec as u32)
+                }
+            }
             "exec_wait" => Some(Op::ExecWait as u32),
             "bind" => Some(Op::BindTrigger as u32),
             "unbind" => Some(Op::Unbind as u32),

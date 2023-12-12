@@ -14,7 +14,7 @@ enum Type {
     Empty,
     Assign,
     Case,
-    VarList
+    VarList,
 }
 
 pub struct SemChecker<'a> {
@@ -144,7 +144,7 @@ impl<'a> SemChecker<'a> {
             Expr::Array(_, e) => {
                 assert_eq!(self.check_expr(e), Type::Integer);
                 Type::Var
-            },
+            }
             Expr::UnOp(op, expr) => self.check_unop_type(op, expr),
             Expr::BinOp(op, lhs, rhs) => self.check_binop_type(op, lhs, rhs),
             Expr::FuncCall(_, args) => {
@@ -168,7 +168,12 @@ impl<'a> SemChecker<'a> {
                 assert_eq!(t, Type::Boolean);
                 Type::Boolean
             }
-            UnOp::Equal | UnOp::NotEqual | UnOp::Greater | UnOp::GreaterEq | UnOp::Less | UnOp::LessEq => {
+            UnOp::Equal
+            | UnOp::NotEqual
+            | UnOp::Greater
+            | UnOp::GreaterEq
+            | UnOp::Less
+            | UnOp::LessEq => {
                 assert!(matches!(t, Type::Integer | Type::Float | Type::Var));
                 Type::Case
             }
