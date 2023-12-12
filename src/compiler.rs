@@ -1,11 +1,12 @@
-//use num_enum::TryFromPrimitive;
 use std::collections::HashMap;
+
+use num_enum::TryFromPrimitive;
 
 use crate::lexer::Literal;
 use crate::parser::{BinOp, Expr, Stmt, UnOp};
 
-//#[derive(TryFromPrimitive)]
-//#[repr(u8)]
+#[derive(TryFromPrimitive)]
+#[repr(u8)]
 enum Op {
     InternalFetch,
     End,
@@ -140,24 +141,31 @@ impl Compiler {
 
     fn compile_stmt(&mut self, stmt: &Stmt) -> Vec<u32> {
         let mut bin = vec![];
+
+        macro_rules! add_op {
+            ($op:ident) => {
+                bin.push(Op::$op as u32)
+            };
+        }
+
         match stmt {
             Stmt::Script(_, s) => {
                 bin.append(&mut self.compile_stmt(s));
-                bin.push(Op::End as u32);
+                add_op!(End);
             }
             Stmt::Block(stmts) => {
                 for s in stmts {
                     bin.append(&mut self.compile_stmt(s));
                 }
             }
-            Stmt::Return => bin.push(Op::Return as u32),
+            Stmt::Return => add_op!(Return),
             Stmt::Label(n) => {
                 let lbl = match n {
                     Literal::Identifier(i) => i,
                     _ => panic!(),
                 };
                 self.labels.insert(lbl.to_string(), self.num_labels);
-                bin.push(Op::Label as u32);
+                add_op!(Label);
                 bin.push(self.num_labels);
                 self.num_labels += 1;
             }
@@ -166,16 +174,16 @@ impl Compiler {
                     Literal::Identifier(i) => i,
                     _ => panic!(),
                 };
-                bin.push(Op::Goto as u32);
+                add_op!(Goto);
                 bin.push(*self.labels.get(lbl).unwrap());
             }
             Stmt::Loop(e, s) => {
-                bin.push(Op::Loop as u32);
+                add_op!(Loop);
                 bin.append(&mut self.compile_expr(e));
                 bin.append(&mut self.compile_stmt(s));
-                bin.push(Op::EndLoop as u32)
+                add_op!(EndLoop)
             }
-            Stmt::BreakLoop => bin.push(Op::BreakLoop as u32),
+            Stmt::BreakLoop => add_op!(BreakLoop),
             Stmt::IfElse(i, e) => {
                 bin.append(&mut self.compile_stmt(i));
                 for expr in e {
@@ -187,7 +195,6 @@ impl Compiler {
                     Expr::BinOp(_, _, _) => bin.append(&mut self.compile_expr(e)),
                     Expr::UnOp(UnOp::Bang, e) => {
                         let mut e = self.compile_expr(e);
-                        /*
                         e[0] = match Op::try_from(e[0] as u8).unwrap() {
                             Op::IfEq => Op::IfNe,
                             Op::IfNe => Op::IfEq,
@@ -199,99 +206,87 @@ impl Compiler {
                             Op::IfNotFlag => Op::IfFlag,
                             _ => unreachable!(),
                         } as u32;
-                        */
-                        e[0] = match e[0] {
-                            0xa => 0xb,
-                            0xb => 0xa,
-                            0xc => 0xf,
-                            0xd => 0xe,
-                            0xe => 0xd,
-                            0xf => 0xc,
-                            0x10 => 0x11,
-                            0x11 => 0x10,
-                            e => panic!("{:?}", e),
-                        };
                         bin.append(&mut e);
                     }
                     p => panic!("{:?}", p),
                 }
                 bin.append(&mut self.compile_stmt(s));
-                bin.push(Op::EndIf as u32)
+                add_op!(EndIf)
             }
             Stmt::Else(Some(i), None) => {
-                bin.push(Op::Else as u32);
+                add_op!(Else);
                 bin.append(&mut self.compile_stmt(i))
             }
             Stmt::Else(None, Some(s)) => {
-                bin.push(Op::Else as u32);
+                add_op!(Else);
                 bin.append(&mut self.compile_stmt(s));
-                bin.push(Op::EndIf as u32)
+                add_op!(EndIf)
             }
             Stmt::Switch(e, s) => {
                 match e {
-                    Expr::Array(_, _) => bin.push(Op::Switch as u32),
-                    Expr::Identifier(_) => bin.push(Op::SwitchConst as u32),
+                    Expr::Array(_, _) => add_op!(Switch),
+                    Expr::Identifier(_) => add_op!(SwitchConst),
                     _ => panic!(),
                 }
                 bin.append(&mut self.compile_expr(e));
                 bin.append(&mut self.compile_stmt(s));
-                bin.push(Op::EndSwitch as u32);
+                add_op!(EndSwitch);
             }
             Stmt::CaseStmt(e, s) => {
                 match e {
                     Expr::UnOp(op, e) => {
                         match op {
-                            UnOp::Equal => bin.push(Op::CaseEq as u32),
-                            UnOp::NotEqual => bin.push(Op::CaseNe as u32),
-                            UnOp::Less => bin.push(Op::CaseLt as u32),
-                            UnOp::Greater => bin.push(Op::CaseGt as u32),
-                            UnOp::LessEq => bin.push(Op::CaseLe as u32),
-                            UnOp::GreaterEq => bin.push(Op::CaseGe as u32),
-                            UnOp::Ampersand => bin.push(Op::CaseFlag as u32),
+                            UnOp::Equal => add_op!(CaseEq),
+                            UnOp::NotEqual => add_op!(CaseNe),
+                            UnOp::Less => add_op!(CaseLt),
+                            UnOp::Greater => add_op!(CaseGt),
+                            UnOp::LessEq => add_op!(CaseLe),
+                            UnOp::GreaterEq => add_op!(CaseGe),
+                            UnOp::Ampersand => add_op!(CaseFlag),
                             _ => unreachable!(),
                         }
                         bin.append(&mut self.compile_expr(e));
                     }
                     Expr::BinOp(op, e, b) => {
                         if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
-                            bin.push(Op::CaseEq as u32);
+                            add_op!(CaseEq);
                         } else if *op == BinOp::Range {
-                            bin.push(Op::CaseRange as u32);
+                            add_op!(CaseRange);
                         }
                         bin.append(&mut self.compile_expr(e));
                         match op {
-                            BinOp::BitOr => bin.push(Op::CaseOrEq as u32),
-                            BinOp::BitAnd => bin.push(Op::CaseAndEq as u32),
+                            BinOp::BitOr => add_op!(CaseOrEq),
+                            BinOp::BitAnd => add_op!(CaseAndEq),
                             _ => (),
                         }
                         bin.append(&mut self.compile_expr(b));
                         if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
-                            bin.push(Op::EndCaseGroup as u32);
+                            add_op!(EndCaseGroup);
                         }
                     }
-                    Expr::Default => bin.push(Op::CaseDefault as u32),
+                    Expr::Default => add_op!(CaseDefault),
                     Expr::Identifier(_) => {
-                        bin.push(Op::CaseEq as u32);
+                        add_op!(CaseEq);
                         bin.append(&mut self.compile_expr(e));
                     }
                     e => panic!("ERROR: {:?}", e),
                 }
                 bin.append(&mut self.compile_stmt(s));
             }
-            Stmt::BreakCase => bin.push(Op::BreakSwitch as u32),
+            Stmt::BreakCase => add_op!(BreakSwitch),
             Stmt::Expr(e) => bin.append(&mut self.compile_expr(e)),
             Stmt::Thread(s) => {
-                bin.push(Op::Thread as u32);
+                add_op!(Thread);
                 bin.append(&mut self.compile_stmt(s));
-                bin.push(Op::EndThread as u32);
+                add_op!(EndThread);
             }
             Stmt::ChildThread(s) => {
-                bin.push(Op::ChildThread as u32);
+                add_op!(ChildThread);
                 bin.append(&mut self.compile_stmt(s));
-                bin.push(Op::EndChildThread as u32);
+                add_op!(EndChildThread);
             }
             Stmt::Jump(i) => {
-                bin.push(Op::Jump as u32);
+                add_op!(Jump);
                 bin.push(match i {
                     Literal::Number(n) => n.as_u32(),
                     _ => todo!(),
@@ -306,6 +301,12 @@ impl Compiler {
 
     fn compile_expr(&self, expr: &Expr) -> Vec<u32> {
         let mut bin = vec![];
+
+        macro_rules! add_op {
+            ($op:ident) => {
+                bin.push(Op::$op as u32)
+            };
+        }
 
         match expr {
             Expr::Identifier(lit) => match lit {
@@ -323,77 +324,61 @@ impl Compiler {
             }
             Expr::BinOp(op, l, r) => match op {
                 BinOp::BitAnd => {
-                    bin.push(Op::IfFlag as u32);
+                    add_op!(IfFlag);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::Range => {
-                    bin.push(Op::CaseRange as u32);
+                    add_op!(CaseRange);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::PlusEq => {
                     if let Expr::Identifier(Literal::Number(n)) = **r {
-                        bin.push(if n.is_float() {
-                            Op::AddF as u32
-                        } else {
-                            Op::Add as u32
-                        });
+                        bin.push(if n.is_float() { Op::AddF } else { Op::Add } as u32);
                     } else {
-                        bin.push(Op::Add as u32);
+                        add_op!(Add);
                     }
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::MinusEq => {
                     if let Expr::Identifier(Literal::Number(n)) = **r {
-                        bin.push(if n.is_float() {
-                            Op::SubF as u32
-                        } else {
-                            Op::Sub as u32
-                        });
+                        bin.push(if n.is_float() { Op::SubF } else { Op::Sub } as u32);
                     } else {
-                        bin.push(Op::Sub as u32);
+                        add_op!(Sub);
                     }
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::StarEq => {
                     if let Expr::Identifier(Literal::Number(n)) = **r {
-                        bin.push(if n.is_float() {
-                            Op::MulF as u32
-                        } else {
-                            Op::Mul as u32
-                        });
+                        bin.push(if n.is_float() { Op::MulF } else { Op::Mul } as u32);
                     } else {
-                        bin.push(Op::Mul as u32);
+                        add_op!(Mul);
                     }
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::DivEq => {
                     if let Expr::Identifier(Literal::Number(n)) = **r {
-                        bin.push(if n.is_float() {
-                            Op::DivF as u32
-                        } else {
-                            Op::Div as u32
-                        });
+                        bin.push(if n.is_float() { Op::DivF } else { Op::Div } as u32);
                     } else {
-                        bin.push(Op::Div as u32);
+                        add_op!(Div);
                     }
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::ModEq => {
-                    bin.push(Op::Mod as u32);
+                    add_op!(Mod);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::AndEq => {
                     match **r {
-                        Expr::Array(_, _) => bin.push(Op::BitwiseAnd as u32),
+                        Expr::Array(_, _) => add_op!(BitwiseAnd),
                         Expr::Identifier(Literal::Number(_)) => {
-                            bin.push(Op::BitwiseAndConst as u32)
+                            add_op!(BitwiseAndConst)
                         }
                         _ => unreachable!(),
                     }
@@ -402,8 +387,8 @@ impl Compiler {
                 }
                 BinOp::OrEq => {
                     match **r {
-                        Expr::Array(_, _) => bin.push(Op::BitwiseOr as u32),
-                        Expr::Identifier(Literal::Number(_)) => bin.push(Op::BitwiseOrConst as u32),
+                        Expr::Array(_, _) => add_op!(BitwiseOr),
+                        Expr::Identifier(Literal::Number(_)) => add_op!(BitwiseOrConst),
                         _ => unreachable!(),
                     }
                     bin.append(&mut self.compile_expr(l));
@@ -412,28 +397,28 @@ impl Compiler {
                 BinOp::Assign => match r.as_ref() {
                     Expr::Identifier(Literal::Number(n)) => {
                         if n.is_float() {
-                            bin.push(Op::SetF as u32);
+                            add_op!(SetF);
                         } else {
-                            bin.push(Op::Set as u32);
+                            add_op!(Set);
                         }
                         bin.append(&mut self.compile_expr(l));
                         bin.append(&mut self.compile_expr(r));
                     }
                     Expr::Identifier(Literal::Identifier(i)) => {
                         match i.as_str() {
-                            "buffer" => bin.push(Op::BufPeek as u32),
-                            "fbuffer" => bin.push(Op::FBufPeek as u32),
+                            "buffer" => add_op!(BufPeek),
+                            "fbuffer" => add_op!(FBufPeek),
                             _ => panic!(),
                         }
                         bin.append(&mut self.compile_expr(l));
                     }
                     Expr::Array(_, _) => {
-                        bin.push(Op::Set as u32);
+                        add_op!(Set);
                         bin.append(&mut self.compile_expr(l));
                         bin.append(&mut self.compile_expr(r));
                     }
                     Expr::UnOp(UnOp::Ampersand, r) => {
-                        bin.push(Op::SetConst as u32);
+                        add_op!(SetConst);
                         bin.append(&mut self.compile_expr(l));
                         bin.append(&mut self.compile_expr(r));
                     }
@@ -446,32 +431,32 @@ impl Compiler {
                     e => panic!("{:?}", e),
                 },
                 BinOp::Equal => {
-                    bin.push(Op::IfEq as u32);
+                    add_op!(IfEq);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::NotEqual => {
-                    bin.push(Op::IfNe as u32);
+                    add_op!(IfNe);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::Less => {
-                    bin.push(Op::IfLt as u32);
+                    add_op!(IfLt);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::Greater => {
-                    bin.push(Op::IfGt as u32);
+                    add_op!(IfGt);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::LessEq => {
-                    bin.push(Op::IfLe as u32);
+                    add_op!(IfLe);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::GreaterEq => {
-                    bin.push(Op::IfGe as u32);
+                    add_op!(IfGe);
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
@@ -528,7 +513,7 @@ impl Compiler {
                 bin.push(get_var(ident, index));
             }
             Expr::FuncCall(func, args) => {
-                bin.push(Op::Call as u32);
+                add_op!(Call);
                 let addr = match func {
                     Literal::Identifier(i) => self.get_func(i, false).unwrap(),
                     _ => unreachable!(),
@@ -546,15 +531,15 @@ impl Compiler {
                 };
 
                 match ident.as_str() {
-                    "buffer" => bin.push(Op::UseBuf as u32),
-                    "fbuffer" => bin.push(Op::UseFBuf as u32),
-                    "array" => bin.push(Op::UseArray as u32),
-                    "flag_array" => bin.push(Op::UseFlags as u32),
+                    "buffer" => add_op!(UseBuf),
+                    "fbuffer" => add_op!(UseFBuf),
+                    "array" => add_op!(UseArray),
+                    "flag_array" => add_op!(UseFlags),
                     _ => panic!(),
                 }
                 bin.append(&mut self.compile_expr(expr));
             }
-            Expr::Default => bin.push(Op::CaseDefault as u32),
+            Expr::Default => add_op!(CaseDefault),
         }
 
         bin
