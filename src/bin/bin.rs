@@ -45,7 +45,7 @@ fn main() {
     println!("{:#?}", stmts);
 
     let mut compiler = compiler::Compiler::new();
-    let code = compiler.compile(stmts);
+    let code = compiler.compile(&stmts);
 
     code.iter().for_each(|x| println!("{:08x?}", x));
 }

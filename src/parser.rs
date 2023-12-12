@@ -550,17 +550,12 @@ impl Parser {
 
             let right = self.expr(op.precedence().1);
             if op == BinOp::Assign {
-                match &left {
-                    Expr::Identifier(Literal::Identifier(s)) => {
-                        if matches!(s.as_str(), "buffer" | "array" | "flag_array") {
-                            left = Expr::ArrayAssign(
-                                Literal::Identifier(s.to_string()),
-                                Box::new(right),
-                            );
-                            continue;
-                        }
+                if let Expr::Identifier(Literal::Identifier(s)) = &left {
+                    if matches!(s.as_str(), "buffer" | "array" | "flag_array") {
+                        left =
+                            Expr::ArrayAssign(Literal::Identifier(s.to_string()), Box::new(right));
+                        continue;
                     }
-                    _ => (),
                 }
             }
             left = Expr::BinOp(op, Box::new(left), Box::new(right));
