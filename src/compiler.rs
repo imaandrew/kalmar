@@ -420,10 +420,11 @@ impl Compiler {
                         bin.append(&mut self.compile_expr(r));
                     }
                     Expr::Identifier(Literal::Identifier(i)) => {
-                        if i != "buffer" {
-                            panic!();
+                        match i.as_str() {
+                            "buffer" => bin.push(Op::BufPeek as u32),
+                            "fbuffer" => bin.push(Op::FBufPeek as u32),
+                            _ => panic!(),
                         }
-                        bin.push(Op::BufPeek as u32);
                         bin.append(&mut self.compile_expr(l));
                     }
                     Expr::Array(_, _) => {
@@ -490,7 +491,16 @@ impl Compiler {
                         if num_vars == 0 {
                             break;
                         };
-                        let op = Op::BufRead1 as usize - 1 + i;
+                        let op = match r.as_ref() {
+                            Expr::Identifier(Literal::Identifier(s)) if s == "buffer" => {
+                                Op::BufRead1 as usize
+                            }
+                            Expr::Identifier(Literal::Identifier(s)) if s == "fbuffer" => {
+                                Op::FBufRead1 as usize
+                            }
+                            _ => panic!(),
+                        } - 1
+                            + i;
                         let num_times = num_vars / i;
                         num_vars %= i;
                         bin.push(op as u32);
@@ -537,6 +547,7 @@ impl Compiler {
 
                 match ident.as_str() {
                     "buffer" => bin.push(Op::UseBuf as u32),
+                    "fbuffer" => bin.push(Op::UseFBuf as u32),
                     "array" => bin.push(Op::UseArray as u32),
                     "flag_array" => bin.push(Op::UseFlags as u32),
                     _ => panic!(),
