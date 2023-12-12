@@ -57,8 +57,8 @@ enum Op {
     DivF,
     UseBuf,
     BufRead1,
-    BufRead2,
-    BufRead3,
+    BufRead2, // (F)BufRead2-4 are unused as we manually calculate their values
+    BufRead3, // as offsets from BufRead1 in compile_expr
     BufRead4,
     BufPeek,
     UseFBuf,
