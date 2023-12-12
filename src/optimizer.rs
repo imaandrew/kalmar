@@ -83,6 +83,8 @@ fn try_elim_if_else_stmt(stmt: &mut Stmt) {
             _ => panic!(),
         }
     }
+
+    *stmt = Stmt::Empty;
 }
 
 fn fold_redundant_blocks(stmt: &mut Stmt) {

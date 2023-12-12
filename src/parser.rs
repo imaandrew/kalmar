@@ -118,8 +118,6 @@ pub enum UnOp {
     Bang,
     #[strum(serialize = "&")]
     Ampersand,
-    #[strum(serialize = "new")]
-    New,
     #[strum(serialize = "==")]
     Equal,
     #[strum(serialize = "!=")]
@@ -142,7 +140,6 @@ impl TryFrom<TokenKind> for UnOp {
             TokenKind::Minus => Ok(Self::Minus),
             TokenKind::Bang => Ok(Self::Bang),
             TokenKind::And => Ok(Self::Ampersand),
-            TokenKind::KwNew => Ok(Self::New),
             TokenKind::EqEq => Ok(Self::Equal),
             TokenKind::BangEq => Ok(Self::NotEqual),
             TokenKind::Greater => Ok(Self::Greater),
@@ -160,7 +157,7 @@ impl TryFrom<TokenKind> for UnOp {
 impl UnOp {
     fn precedence(&self) -> (u8, u8) {
         match self {
-            Self::Bang | Self::Minus | Self::Ampersand | Self::New => (20, 19),
+            Self::Bang | Self::Minus | Self::Ampersand => (20, 19),
             Self::Equal
             | Self::NotEqual
             | Self::Greater
@@ -217,10 +214,10 @@ pub enum BinOp {
     Range,
     #[strum(serialize = "=")]
     Assign,
-    #[strum(serialize = "or")]
-    Or,
-    #[strum(serialize = "and")]
-    And,
+    #[strum(serialize = "<-")]
+    Arrow,
+    #[strum(serialize = ",")]
+    Comma,
 }
 
 impl TryFrom<TokenKind> for BinOp {
@@ -250,6 +247,8 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::LessEq => Ok(Self::LessEq),
             TokenKind::Range => Ok(Self::Range),
             TokenKind::Eq => Ok(Self::Assign),
+            TokenKind::Comma => Ok(Self::Comma),
+            TokenKind::Arrow => Ok(Self::Arrow),
             _ => Err(format!(
                 "Cannot convert token of type: {:?} to binary operator",
                 value
@@ -261,7 +260,7 @@ impl TryFrom<TokenKind> for BinOp {
 impl BinOp {
     fn precedence(&self) -> (u8, u8) {
         match self {
-            Self::Range | Self::Or | Self::And => (90, 91),
+            Self::Range | Self::Comma => (90, 91),
             Self::Star | Self::Div | Self::Mod => (80, 81),
             Self::Plus | Self::Minus => (70, 71),
             Self::Greater | Self::GreaterEq | Self::Less | Self::LessEq => (60, 61),
@@ -269,6 +268,7 @@ impl BinOp {
             Self::BitAnd => (40, 41),
             Self::BitOr => (30, 31),
             Self::Assign
+            | Self::Arrow
             | Self::PlusEq
             | Self::MinusEq
             | Self::StarEq
@@ -472,10 +472,12 @@ impl Parser {
     }
 
     fn case_statement(&mut self) -> Stmt {
-        let case = match self.pop().kind {
-            TokenKind::KwCase => self.expr(0),
-            TokenKind::KwDefault => Expr::Default,
-            _ => panic!(),
+        let case = match self.kind() {
+            TokenKind::KwDefault => {
+                self.pop();
+                Expr::Default
+            }
+            _ => self.expr(0),
         };
         let block = self.block(Self::statement, true);
 
@@ -502,14 +504,11 @@ impl Parser {
                                 self.pop();
                                 return Expr::FuncCall(t.val.unwrap(), args);
                             }
-                            TokenKind::Comma => {
-                                self.pop();
-                            }
                             _ => args.push(self.expr(0)),
                         }
                     }
                 }
-                _ => panic!(),
+                _ => Expr::Identifier(t.val.unwrap()),
             },
             TokenKind::Minus
             | TokenKind::Bang

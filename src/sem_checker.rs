@@ -11,8 +11,10 @@ enum Type {
     Boolean,
     Var,
     Range,
-    CaseExpr,
     Empty,
+    Assign,
+    Case,
+    VarList
 }
 
 pub struct SemChecker<'a> {
@@ -77,10 +79,10 @@ impl<'a> SemChecker<'a> {
                         self.referenced_labels.push(i);
                     }
                 }
-                _ => panic!(),
+                _ => panic!("Goto literal must be an identifier"),
             },
             Stmt::Loop(e, s) => {
-                self.check_expr(e);
+                assert_eq!(self.check_expr(e), Type::Integer);
                 self.check_stmt(s);
             }
             Stmt::IfElse(i, e) => {
@@ -88,7 +90,7 @@ impl<'a> SemChecker<'a> {
                 self.check_stmts(e);
             }
             Stmt::If(e, s) => {
-                self.check_expr(e);
+                assert_eq!(self.check_expr(e), Type::Boolean);
                 self.check_stmt(s);
             }
             Stmt::Else(i, b) => {
@@ -112,10 +114,10 @@ impl<'a> SemChecker<'a> {
             Stmt::Thread(s) => self.check_stmt(s),
             Stmt::ChildThread(s) => self.check_stmt(s),
             Stmt::Expr(e) => {
-                self.check_expr(e);
+                assert_eq!(self.check_expr(e), Type::Assign);
             }
             Stmt::Switch(e, s) => {
-                self.check_expr(e);
+                assert!(matches!(self.check_expr(e), Type::Integer | Type::Var));
                 self.check_stmt(s);
             }
             Stmt::CaseStmt(e, s) => {
@@ -138,9 +140,11 @@ impl<'a> SemChecker<'a> {
                     }
                 }
                 Literal::Boolean(_) => Type::Boolean,
-                _ => unimplemented!(),
             },
-            Expr::Array(_, e) => self.check_expr(e),
+            Expr::Array(_, e) => {
+                assert_eq!(self.check_expr(e), Type::Integer);
+                Type::Var
+            },
             Expr::UnOp(op, expr) => self.check_unop_type(op, expr),
             Expr::BinOp(op, lhs, rhs) => self.check_binop_type(op, lhs, rhs),
             Expr::FuncCall(_, args) => {
@@ -149,7 +153,7 @@ impl<'a> SemChecker<'a> {
                 }
                 Type::Empty
             }
-            Expr::Default => Type::Empty,
+            Expr::Default => Type::Case,
         }
     }
 
@@ -157,26 +161,20 @@ impl<'a> SemChecker<'a> {
         let t = self.check_expr(expr);
         match op {
             UnOp::Minus => {
-                matches!(t, Type::Integer | Type::Float);
+                assert!(matches!(t, Type::Integer | Type::Float));
                 t
             }
             UnOp::Bang => {
                 assert_eq!(t, Type::Boolean);
                 Type::Boolean
             }
-            UnOp::Equal => {
-                matches!(t, Type::Integer | Type::Float | Type::Var | Type::CaseExpr);
-                Type::Empty
-            }
-            UnOp::NotEqual | UnOp::Greater | UnOp::GreaterEq | UnOp::Less | UnOp::LessEq => {
-                matches!(t, Type::Integer | Type::Float | Type::Var);
-                Type::Empty
+            UnOp::Equal | UnOp::NotEqual | UnOp::Greater | UnOp::GreaterEq | UnOp::Less | UnOp::LessEq => {
+                assert!(matches!(t, Type::Integer | Type::Float | Type::Var));
+                Type::Case
             }
             UnOp::Ampersand => {
-                unimplemented!()
-            }
-            UnOp::New => {
-                unimplemented!()
+                assert!(matches!(t, Type::Var | Type::Integer));
+                t
             }
         }
     }
@@ -190,20 +188,29 @@ impl<'a> SemChecker<'a> {
                 matches!(l_type, Type::Integer | Type::Float);
                 l_type
             }
-            BinOp::Mod | BinOp::BitOr | BinOp::BitAnd => {
+            BinOp::Mod | BinOp::BitOr => {
                 assert_eq!(l_type, r_type);
                 assert_eq!(l_type, Type::Integer);
                 l_type
             }
+            BinOp::BitAnd => {
+                assert!(matches!(l_type, Type::Var | Type::Integer));
+                assert_eq!(r_type, Type::Integer);
+                if l_type == Type::Var {
+                    Type::Boolean
+                } else {
+                    Type::Integer
+                }
+            }
             BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::DivEq => {
                 assert_eq!(l_type, Type::Var);
                 matches!(r_type, Type::Integer | Type::Float | Type::Var);
-                Type::Empty
+                Type::Assign
             }
             BinOp::ModEq | BinOp::OrEq | BinOp::AndEq => {
                 assert_eq!(l_type, Type::Var);
                 matches!(r_type, Type::Integer | Type::Var);
-                Type::Empty
+                Type::Assign
             }
             BinOp::Equal
             | BinOp::NotEqual
@@ -218,17 +225,22 @@ impl<'a> SemChecker<'a> {
             BinOp::Assign => {
                 assert_eq!(l_type, Type::Var);
                 matches!(r_type, Type::Integer | Type::Float | Type::Var);
-                Type::Empty
+                Type::Assign
             }
             BinOp::Range => {
                 assert_eq!(l_type, Type::Integer);
                 assert_eq!(r_type, Type::Integer);
                 Type::Range
             }
-            BinOp::Or | BinOp::And => {
-                matches!(l_type, Type::Integer | Type::Float | Type::CaseExpr);
-                matches!(r_type, Type::Integer | Type::Float | Type::CaseExpr);
-                Type::CaseExpr
+            BinOp::Comma => {
+                assert!(matches!(l_type, Type::Var | Type::VarList));
+                assert_eq!(r_type, Type::Var);
+                Type::VarList
+            }
+            BinOp::Arrow => {
+                assert!(matches!(l_type, Type::Var | Type::VarList));
+                assert_eq!(r_type, Type::Identifier);
+                Type::Assign
             }
         }
     }

@@ -47,8 +47,6 @@ pub enum TokenKind {
     KwBreakCase,
     #[strum(serialize = "switch")]
     KwSwitch,
-    #[strum(serialize = "case")]
-    KwCase,
     #[strum(serialize = "thread")]
     KwThread,
     #[strum(serialize = "cthread")]
@@ -57,16 +55,10 @@ pub enum TokenKind {
     KwIf,
     #[strum(serialize = "else")]
     KwElse,
-    #[strum(serialize = "and")]
-    KwAnd,
-    #[strum(serialize = "or")]
-    KwOr,
     #[strum(serialize = "default")]
     KwDefault,
     #[strum(serialize = "jump")]
     KwJump,
-    #[strum(serialize = "new")]
-    KwNew,
     #[strum(serialize = "==")]
     EqEq,
     #[strum(serialize = "!=")]
@@ -127,10 +119,10 @@ pub enum TokenKind {
     Colon,
     #[strum(serialize = ",")]
     Comma,
-    #[strum(serialize = "_")]
-    Underscore,
     #[strum(serialize = "..")]
     Range,
+    #[strum(serialize = "<-")]
+    Arrow,
     #[strum(disabled)]
     Number,
     #[strum(disabled)]
@@ -246,7 +238,6 @@ impl Neg for Number {
 #[derive(Clone, Debug)]
 pub enum Literal {
     Identifier(String),
-    Str(String),
     Number(Number),
     Boolean(bool),
 }
@@ -255,7 +246,6 @@ impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Literal::Identifier(s) => write!(f, "{}", s),
-            Literal::Str(s) => write!(f, "\"{}\"", s),
             Literal::Number(n) => write!(f, "{}", n),
             Literal::Boolean(b) => write!(f, "{}", b),
         }
@@ -305,7 +295,7 @@ impl Lexer {
     fn lex_token(&mut self) -> Option<Token> {
         let c = self.next();
         match c {
-            '(' | ')' | '{' | '}' | '[' | ']' | ':' | ',' | '_' | '#' => {
+            '(' | ')' | '{' | '}' | '[' | ']' | ':' | ',' => {
                 Some(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
             }
             '=' | '!' | '>' | '<' | '+' | '-' | '*' | '/' | '%' | '|' | '&' | '.' => {

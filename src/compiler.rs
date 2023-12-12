@@ -195,11 +195,11 @@ impl Compiler {
                             0xf => 0xc,
                             0x10 => 0x11,
                             0x11 => 0x10,
-                            _ => unreachable!(),
+                            e => panic!("{:?}", e),
                         };
                         bin.append(&mut e);
                     }
-                    _ => unreachable!(),
+                    p => panic!("{:?}", p),
                 }
                 bin.append(&mut self.compile_stmt(*s));
                 bin.push(Op::EndIf as u32)
@@ -239,19 +239,19 @@ impl Compiler {
                         bin.append(&mut self.compile_expr(*e));
                     }
                     Expr::BinOp(op, e, b) => {
-                        if matches!(op, BinOp::Or | BinOp::And) {
+                        if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
                             bin.push(Op::CaseEq as u32);
                         } else if op == BinOp::Range {
                             bin.push(Op::CaseRange as u32);
                         }
                         bin.append(&mut self.compile_expr(*e));
                         match op {
-                            BinOp::Or => bin.push(Op::CaseOrEq as u32),
-                            BinOp::And => bin.push(Op::CaseAndEq as u32),
+                            BinOp::BitOr => bin.push(Op::CaseOrEq as u32),
+                            BinOp::BitAnd => bin.push(Op::CaseAndEq as u32),
                             _ => (),
                         }
                         bin.append(&mut self.compile_expr(*b));
-                        if matches!(op, BinOp::Or | BinOp::And) {
+                        if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
                             bin.push(Op::EndCaseGroup as u32);
                         }
                     }
@@ -279,7 +279,8 @@ impl Compiler {
                     _ => todo!(),
                 });
             }
-            Stmt::Else(_, _) | Stmt::Empty => unreachable!(),
+            Stmt::Empty => (),
+            Stmt::Else(_, _) => unreachable!(),
         }
 
         bin
@@ -442,16 +443,6 @@ impl Compiler {
                     bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
-                BinOp::And => {
-                    bin.push(Op::CaseAndEq as u32);
-                    bin.append(&mut self.compile_expr(*l));
-                    bin.append(&mut self.compile_expr(*r));
-                }
-                BinOp::Or => {
-                    bin.push(Op::CaseOrEq as u32);
-                    bin.append(&mut self.compile_expr(*l));
-                    bin.append(&mut self.compile_expr(*r));
-                }
                 BinOp::Plus
                 | BinOp::Minus
                 | BinOp::Star
@@ -460,6 +451,7 @@ impl Compiler {
                 | BinOp::BitOr => {
                     unreachable!()
                 }
+                _ => todo!(),
             },
             Expr::Array(ident, index) => {
                 let ident = match ident {
@@ -494,22 +486,25 @@ impl Compiler {
 
     fn get_func(&self, func: &str) -> Option<u32> {
         match func {
-            "exec" => Some(0x44),
-            "exec_wait" => Some(0x46),
-            "bind" => Some(0x47),
-            "unbind" => Some(0x48),
-            "kill" => Some(0x49),
-            "set_priority" => Some(0x4b),
-            "set_timescale" => Some(0x4c),
-            "set_group" => Some(0x4d),
-            "bind_lock" => Some(0x4e),
-            "suspend_all" => Some(0x4f),
-            "resume_all" => Some(0x50),
-            "suspend_others" => Some(0x51),
-            "resume_others" => Some(0x52),
-            "suspend" => Some(0x53),
-            "resume" => Some(0x54),
-            "does_exist" => Some(0x55),
+            "wait" => Some(Op::WaitFrames as u32),
+            "wait_sec" => Some(Op::WaitSecs as u32),
+            "alloc" => Some(Op::MallocArray as u32),
+            "exec" => Some(Op::Exec as u32),
+            "exec_wait" => Some(Op::ExecWait as u32),
+            "bind" => Some(Op::BindTrigger as u32),
+            "unbind" => Some(Op::Unbind as u32),
+            "kill" => Some(Op::KillThread as u32),
+            "set_priority" => Some(Op::SetPriority as u32),
+            "set_timescale" => Some(Op::SetTimescale as u32),
+            "set_group" => Some(Op::SetGroup as u32),
+            "bind_lock" => Some(Op::BindPadlock as u32),
+            "suspend_all" => Some(Op::SuspendGroup as u32),
+            "resume_all" => Some(Op::ResumeGroup as u32),
+            "suspend_others" => Some(Op::SuspendOthers as u32),
+            "resume_others" => Some(Op::ResumeOthers as u32),
+            "suspend" => Some(Op::SuspendThread as u32),
+            "resume" => Some(Op::ResumeThread as u32),
+            "does_exist" => Some(Op::IsThreadRunning as u32),
             e => self.syms.get(e).copied(),
         }
     }
