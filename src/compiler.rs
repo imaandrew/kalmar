@@ -256,6 +256,10 @@ impl Compiler {
                         }
                     }
                     Expr::Default => bin.push(Op::CaseDefault as u32),
+                    Expr::Identifier(_) => {
+                        bin.push(Op::CaseEq as u32);
+                        bin.append(&mut self.compile_expr(e));
+                    }
                     e => panic!("ERROR: {:?}", e),
                 }
                 bin.append(&mut self.compile_stmt(*s));
@@ -305,8 +309,8 @@ impl Compiler {
             }
             Expr::BinOp(op, l, r) => match op {
                 BinOp::BitAnd => {
-                    bin.append(&mut self.compile_expr(*l));
                     bin.push(Op::IfFlag as u32);
+                    bin.append(&mut self.compile_expr(*l));
                     bin.append(&mut self.compile_expr(*r));
                 }
                 BinOp::Range => {
@@ -411,7 +415,13 @@ impl Compiler {
                         bin.append(&mut self.compile_expr(*l));
                         bin.append(&mut self.compile_expr(*r));
                     }
-                    _ => unreachable!(),
+                    Expr::FuncCall(Literal::Identifier(s), a) => {
+                        bin.push(self.get_func(&s, true).unwrap());
+                        for arg in a {
+                            bin.append(&mut self.compile_expr(arg));
+                        }
+                    }
+                    e => panic!("{:?}", e),
                 },
                 BinOp::Equal => {
                     bin.push(Op::IfEq as u32);
@@ -451,7 +461,25 @@ impl Compiler {
                 | BinOp::BitOr => {
                     unreachable!()
                 }
-                _ => todo!(),
+                BinOp::Arrow => {
+                    let vars = self.compile_expr(*l);
+                    let mut num_vars = vars.len();
+                    let mut vars = vars.iter();
+                    for i in (1..5usize).rev() {
+                        if num_vars == 0 { break };
+                        let op = Op::BufRead1 as usize - 1 + i;
+                        let num_times = num_vars / i;
+                        num_vars %= i;
+                        bin.push(op as u32);
+                        for _ in 0..num_times {
+                            bin.push(*vars.next().unwrap());
+                        }
+                    }
+                }
+                BinOp::Comma => {
+                    bin.append(&mut self.compile_expr(*l));
+                    bin.append(&mut self.compile_expr(*r));
+                }
             },
             Expr::Array(ident, index) => {
                 let ident = match ident {
@@ -469,7 +497,7 @@ impl Compiler {
             Expr::FuncCall(func, args) => {
                 bin.push(Op::Call as u32);
                 let addr = match func {
-                    Literal::Identifier(i) => self.get_func(&i).unwrap(),
+                    Literal::Identifier(i) => self.get_func(&i, false).unwrap(),
                     _ => unreachable!(),
                 };
                 bin.push(addr);
@@ -484,12 +512,12 @@ impl Compiler {
         bin
     }
 
-    fn get_func(&self, func: &str) -> Option<u32> {
+    fn get_func(&self, func: &str, returns_val: bool) -> Option<u32> {
         match func {
             "wait" => Some(Op::WaitFrames as u32),
             "wait_sec" => Some(Op::WaitSecs as u32),
             "alloc" => Some(Op::MallocArray as u32),
-            "exec" => Some(Op::Exec as u32),
+            "exec" => if returns_val { Some(Op::ExecGetTid as u32) } else {Some(Op::Exec as u32)},
             "exec_wait" => Some(Op::ExecWait as u32),
             "bind" => Some(Op::BindTrigger as u32),
             "unbind" => Some(Op::Unbind as u32),
