@@ -287,11 +287,20 @@ impl Lexer {
                 Some(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
             }
             '=' | '!' | '>' | '<' | '+' | '-' | '*' | '/' | '%' | '|' | '&' | '.' => {
-                if c == '/' && self.peek() == '/' {
-                    while self.peek() != '\n' && self.peek() != '\0' {
+                if c == '/' {
+                    if self.peek() == '/' {
+                        while self.peek() != '\n' && self.peek() != '\0' {
+                            self.next();
+                        }
+                        return self.lex_token();
+                    } else if self.peek() == '*' {
                         self.next();
+                        while self.peek() != '*' || self.peek_over() != '/' {
+                            self.next();
+                        }
+                        self.curr += 2;
+                        return self.lex_token();
                     }
-                    return self.lex_token();
                 }
                 let x = format!("{}{}", c, self.peek());
                 if let Ok(kind) = TokenKind::from_str(&x) {
@@ -315,7 +324,7 @@ impl Lexer {
     fn identifier(&mut self) -> Token {
         while self.peek().is_alphanumeric()
             || self.peek() == '_'
-            || (self.peek() == '.' && self.peek_x(2) != '.')
+            || (self.peek() == '.' && self.peek_over() != '.')
         {
             self.next();
         }
@@ -382,8 +391,8 @@ impl Lexer {
         *self.data.get(self.curr).unwrap_or(&'\0')
     }
 
-    fn peek_x(&self, x: usize) -> char {
-        *self.data.get(self.curr + x - 1).unwrap_or(&'\0')
+    fn peek_over(&self) -> char {
+        *self.data.get(self.curr + 1).unwrap_or(&'\0')
     }
 
     pub fn at_end(&self) -> bool {
