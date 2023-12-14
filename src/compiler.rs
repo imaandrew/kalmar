@@ -578,15 +578,18 @@ impl Compiler {
 }
 
 fn get_var(ident: &str, index: u32) -> u32 {
-    match ident {
-        "var" => index + 30000000,
-        "map_var" => index + 50000000,
-        "flag" => index + 70000000,
-        "map_flag" => index + 90000000,
-        "area_flag" => index + 110000000,
-        "game_flag" => index + 130000000,
-        "area_byte" => index + 150000000,
-        "game_byte" => index + 170000000,
-        _ => todo!(),
-    }
+    let index = index as i32;
+    (match ident {
+        "var" => index - 30000000,
+        "MapVar" => index - 50000000,
+        "flag" => index - 70000000,
+        "MapFlag" => index - 90000000,
+        "AreaFlag" => index - 110000000,
+        "GameFlag" => index - 130000000,
+        "AreaByte" => index - 150000000,
+        "GameByte" => index - 170000000,
+        "array" => index - 190000000,
+        "flag_array" => index - 210000000,
+        _ => panic!(),
+    }) as u32
 }
