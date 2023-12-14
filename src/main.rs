@@ -15,21 +15,9 @@ struct Cli {
     verbose: bool,
 }
 
-fn masin() -> Result<(), Box<dyn error::Error>> {
-    let cli = Cli::parse();
-    let data: String = fs::read_to_string(cli.input_file)?.parse()?;
-    let mut parser = parser::Parser::new(&data);
-
-    let stmts = parser.parse(cli.verbose);
-
-    println!("{:#?}", stmts);
-
-    Ok(())
-}
-
-fn main() {
+fn main() -> Result<(), Box<dyn error::Error>> {
     //let cli = Cli::parse();
-    let data: String = fs::read_to_string("test.scr").unwrap().parse().unwrap();
+    let data: String = fs::read_to_string("test.scr")?.parse()?;
     let mut parser = parser::Parser::new(&data);
 
     let mut stmts = parser.parse(false);
@@ -48,4 +36,5 @@ fn main() {
     let code = compiler.compile(&stmts);
 
     code.iter().for_each(|x| println!("{:08x?}", x));
+    Ok(())
 }

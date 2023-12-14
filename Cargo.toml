@@ -10,11 +10,3 @@ clap = { version = "4.2.4", features = ["derive"] }
 num_enum = "0.7.0"
 strum = "0.24.1"
 strum_macros = "0.24.3"
-
-[lib]
-name = "kalmar"
-path = "src/lib.rs"
-
-[[bin]]
-name = "kalmar"
-path = "src/bin/bin.rs"
