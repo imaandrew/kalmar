@@ -17,18 +17,6 @@ impl Token {
     pub fn is_last(&self) -> bool {
         matches!(self.kind, TokenKind::Eof)
     }
-
-    pub fn get_ident(&self) -> String {
-        if let Token {
-            kind: TokenKind::Identifier,
-            val: Some(Literal::Identifier(s)),
-            loc: _,
-        } = self
-        {
-            return s.to_string();
-        }
-        panic!("{:?}", self);
-    }
 }
 
 #[derive(Copy, Clone, Debug, EnumString, PartialEq, Eq)]
