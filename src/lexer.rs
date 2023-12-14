@@ -13,12 +13,6 @@ pub struct Token {
     pub loc: (usize, isize),
 }
 
-impl Token {
-    pub fn is_last(&self) -> bool {
-        matches!(self.kind, TokenKind::Eof)
-    }
-}
-
 #[derive(Copy, Clone, Debug, EnumString, PartialEq, Eq)]
 pub enum TokenKind {
     #[strum(serialize = "scr")]
@@ -113,8 +107,6 @@ pub enum TokenKind {
     Arrow,
     #[strum(disabled)]
     Number,
-    #[strum(disabled)]
-    String,
     Newline,
     #[strum(disabled)]
     Identifier,
@@ -236,15 +228,6 @@ impl Display for Literal {
             Literal::Identifier(s) => write!(f, "{}", s),
             Literal::Number(n) => write!(f, "{}", n),
             Literal::Boolean(b) => write!(f, "{}", b),
-        }
-    }
-}
-
-impl Literal {
-    pub fn as_u32(&self) -> u32 {
-        match self {
-            Self::Number(n) => n.as_u32(),
-            _ => panic!(),
         }
     }
 }

@@ -1,8 +1,10 @@
+mod compiler;
+mod lexer;
+mod optimizer;
+mod parser;
+mod sem_checker;
+
 use clap::Parser;
-use kalmar::compiler;
-use kalmar::optimizer;
-use kalmar::parser;
-use kalmar::sem_checker;
 use std::{error, fs, path::PathBuf};
 
 #[derive(Parser)]

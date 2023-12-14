@@ -126,8 +126,8 @@ impl Compiler {
         }
     }
 
-    pub fn symbols(&mut self, syms: HashMap<String, u32>) {
-        self.syms = syms;
+    pub fn add_symbol(&mut self, sym: (String, u32)) {
+        self.syms.insert(sym.0, sym.1).unwrap();
     }
 
     pub fn compile(&mut self, stmts: &Vec<Stmt>) -> Vec<u32> {
