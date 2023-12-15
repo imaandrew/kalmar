@@ -31,8 +31,8 @@ struct Cli {
 
 fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, Box<dyn error::Error>> {
     let mut v = vec![];
-    for l in s.lines() {
-        let mut l = l.split('=');
+    for line in s.lines() {
+        let mut l = line.split('=');
         let sym = l.next().unwrap().trim();
         let num = l.next().unwrap().trim();
         let num = if let Some(n) = num.strip_prefix("0x") {
@@ -41,8 +41,9 @@ fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, Box<dyn error::Error>> {
             num.parse()
         };
 
-        if let Ok(n) = num {
-            v.push((sym, n));
+        match num {
+            Ok(n) => v.push((sym, n)),
+            Err(_) => eprintln!("Invalid symbol file line: {}", line),
         }
     }
     Ok(v)
