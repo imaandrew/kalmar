@@ -21,9 +21,31 @@ struct Cli {
     /// Write output to <output>
     #[arg(short, long)]
     output: Option<PathBuf>,
+    /// Read symbols from <syms>
+    #[arg(short, long)]
+    syms: Option<PathBuf>,
     /// Print AST
     #[arg(long)]
     print_ast: bool,
+}
+
+fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, Box<dyn error::Error>> {
+    let mut v = vec![];
+    for l in s.lines() {
+        let mut l = l.split('=');
+        let sym = l.next().unwrap().trim();
+        let num = l.next().unwrap().trim();
+        let num = if let Some(n) = num.strip_prefix("0x") {
+            u32::from_str_radix(n, 16)
+        } else {
+            num.parse()
+        };
+
+        if let Ok(n) = num {
+            v.push((sym, n));
+        }
+    }
+    Ok(v)
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
@@ -45,6 +67,11 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     }
 
     let mut compiler = compiler::Compiler::new();
+    let mut syms = String::new();
+    if let Some(s) = cli.syms {
+        syms = fs::read_to_string(s)?;
+    }
+    compiler.add_syms(parse_syms(&syms)?);
     let code = compiler.compile(&stmts);
 
     if let Some(o) = cli.output {

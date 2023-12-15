@@ -105,19 +105,19 @@ enum Op {
     Op94,
 }
 
-pub struct Compiler {
-    syms: HashMap<String, u32>,
+pub struct Compiler<'a> {
+    syms: HashMap<&'a str, u32>,
     labels: HashMap<String, u32>,
     num_labels: u32,
 }
 
-impl Default for Compiler {
+impl Default for Compiler<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Compiler {
+impl<'a> Compiler<'a> {
     pub fn new() -> Self {
         Compiler {
             syms: HashMap::new(),
@@ -126,8 +126,8 @@ impl Compiler {
         }
     }
 
-    pub fn add_symbol(&mut self, sym: (String, u32)) {
-        self.syms.insert(sym.0, sym.1).unwrap();
+    pub fn add_syms(&mut self, syms: Vec<(&'a str, u32)>) {
+        self.syms.extend(syms)
     }
 
     pub fn compile(&mut self, stmts: &Vec<Stmt>) -> Vec<u32> {
@@ -311,7 +311,7 @@ impl Compiler {
         match expr {
             Expr::Identifier(lit) => match lit {
                 Literal::Number(n) => bin.push(n.as_u32()),
-                Literal::Identifier(i) => bin.push(*self.syms.get(i).unwrap()),
+                Literal::Identifier(i) => bin.push(*self.syms.get(i.as_str()).unwrap()),
                 _ => todo!(),
             },
             Expr::UnOp(op, expr) => {

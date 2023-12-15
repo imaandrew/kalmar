@@ -11,7 +11,7 @@ enum Type {
     Boolean,
     Var,
     Range,
-    Empty,
+    FuncCall,
     Assign,
     Case,
     VarList,
@@ -114,7 +114,7 @@ impl<'a> SemChecker<'a> {
             Stmt::Thread(s) => self.check_stmt(s),
             Stmt::ChildThread(s) => self.check_stmt(s),
             Stmt::Expr(e) => {
-                assert_eq!(self.check_expr(e), Type::Assign);
+                assert!(matches!(self.check_expr(e), Type::Assign | Type::FuncCall));
             }
             Stmt::Switch(e, s) => {
                 assert!(matches!(self.check_expr(e), Type::Integer | Type::Var));
@@ -151,7 +151,7 @@ impl<'a> SemChecker<'a> {
                 for e in args {
                     self.check_expr(e);
                 }
-                Type::Empty
+                Type::FuncCall
             }
             Expr::ArrayAssign(_, e) => {
                 assert!(matches!(self.check_expr(e), Type::Integer | Type::Var));
