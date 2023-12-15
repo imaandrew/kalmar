@@ -115,18 +115,14 @@ pub enum TokenKind {
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub enum Number {
-    Byte(u8),
-    Short(u16),
-    Integer(u32),
+    Int(u32),
     Float(f32),
 }
 
 impl Display for Number {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Number::Byte(x) => write!(f, "{}", x),
-            Number::Short(x) => write!(f, "{}", x),
-            Number::Integer(x) => write!(f, "{}", x),
+            Number::Int(x) => write!(f, "{}", x),
             Number::Float(x) => write!(f, "{}", x),
         }
     }
@@ -135,9 +131,7 @@ impl Display for Number {
 impl Number {
     pub fn as_u32(&self) -> u32 {
         match *self {
-            Number::Byte(x) => x as u32,
-            Number::Short(x) => x as u32,
-            Number::Integer(x) => x,
+            Number::Int(x) => x,
             Number::Float(x) => (x * 1024.0 - 230000000.0) as i32 as u32,
         }
     }
@@ -160,9 +154,7 @@ macro_rules! number_ops {
                         _ => {
                             let result = self.as_u32() $op rhs.as_u32();
                             match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                                2 => Number::Byte(result as u8),
-                                4 => Number::Short(result as u16),
-                                8 => Number::Integer(result),
+                                8 => Number::Int(result),
                                 e => panic!("{}", e),
                             }
                         }
@@ -187,9 +179,7 @@ macro_rules! int_ops {
                         _ => {
                             let result = self.as_u32() $op rhs.as_u32();
                             match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                                2 => Number::Byte(result as u8),
-                                4 => Number::Short(result as u16),
-                                8 => Number::Integer(result),
+                                8 => Number::Int(result),
                                 e => panic!("{}", e),
                             }
                         }
@@ -207,9 +197,7 @@ impl Neg for Number {
 
     fn neg(self) -> Self::Output {
         match &self {
-            Number::Byte(x) => Number::Byte(x.wrapping_neg()),
-            Number::Short(x) => Number::Short(x.wrapping_neg()),
-            Number::Integer(x) => Number::Integer(x.wrapping_neg()),
+            Number::Int(x) => Number::Int(x.wrapping_neg()),
             Number::Float(x) => Number::Float(-x),
         }
     }
@@ -327,7 +315,7 @@ impl Lexer {
             if text.len() < 3 {
                 return self.create_token_literal(
                     TokenKind::Number,
-                    Some(Literal::Number(Number::Integer(text.parse().unwrap()))),
+                    Some(Literal::Number(Number::Int(text.parse().unwrap()))),
                 );
             }
 
@@ -338,24 +326,12 @@ impl Lexer {
                 _ => 10,
             };
 
-            let (size, num) = if let Some(t) = text.find('u') {
-                let ty = &text[t..];
-                let num = if base != 10 { &text[2..t] } else { &text[..t] };
-                (ty, num)
-            } else if base != 10 {
-                ("u32", &text[2..])
-            } else {
-                ("u32", &text[..])
-            };
-
-            let num = match size {
-                "u8" => Number::Byte(u8::from_str_radix(num, base).unwrap()),
-                "u16" => Number::Short(u16::from_str_radix(num, base).unwrap()),
-                "u32" => Number::Integer(u32::from_str_radix(num, base).unwrap()),
-                _ => panic!(),
-            };
-
-            return self.create_token_literal(TokenKind::Number, Some(Literal::Number(num)));
+            return self.create_token_literal(
+                TokenKind::Number,
+                Some(Literal::Number(Number::Int(
+                    u32::from_str_radix(if base != 10 { &text[2..] } else { &text }, base).unwrap(),
+                ))),
+            );
         }
 
         if let Ok(kind) = TokenKind::from_str(&text) {

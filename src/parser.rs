@@ -412,7 +412,7 @@ impl Parser {
 
     fn loop_statement(&mut self) -> Stmt {
         let loop_count = if self.peek(TokenKind::LBrace) {
-            Expr::Identifier(Literal::Number(Number::Integer(0)))
+            Expr::Identifier(Literal::Number(Number::Int(0)))
         } else {
             self.expr(0)
         };
