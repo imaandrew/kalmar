@@ -5,38 +5,55 @@ mod parser;
 mod sem_checker;
 
 use clap::Parser;
-use std::{error, fs, path::PathBuf};
+use std::{
+    error,
+    fs::{self, File},
+    io::{BufWriter, Write},
+    path::PathBuf,
+};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
-    /// Use this file as input
+    /// Use <input> as input
     #[clap(value_parser)]
-    input_file: PathBuf,
+    input: PathBuf,
+    /// Write output to <output>
     #[arg(short, long)]
-    verbose: bool,
+    output: Option<PathBuf>,
+    /// Print AST
+    #[arg(long)]
+    print_ast: bool,
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-    //let cli = Cli::parse();
-    let data: String = fs::read_to_string("test.scr")?.parse()?;
+    let cli = Cli::parse();
+    let data: String = fs::read_to_string(cli.input)?.parse()?;
     let mut parser = parser::Parser::new(&data);
 
     let mut stmts = parser.parse(false);
-
-    for s in &stmts {
-        println!("{}", s);
-    }
 
     let mut sem = sem_checker::SemChecker::default();
     sem.check_scripts(&stmts);
 
     optimizer::optimize_stmts(&mut stmts);
-    println!("{:#?}", stmts);
+
+    if cli.print_ast {
+        for s in &stmts {
+            println!("{}", s);
+        }
+    }
 
     let mut compiler = compiler::Compiler::new();
     let code = compiler.compile(&stmts);
 
-    code.iter().for_each(|x| println!("{:08x?}", x));
+    if let Some(o) = cli.output {
+        let o = File::create(o)?;
+        let mut o = BufWriter::new(o);
+        for i in &code {
+            o.write_all(&i.to_be_bytes())?;
+        }
+    }
+
     Ok(())
 }
