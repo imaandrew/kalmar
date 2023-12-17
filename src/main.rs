@@ -1,4 +1,5 @@
 mod compiler;
+mod error;
 mod lexer;
 mod optimizer;
 mod parser;
@@ -6,11 +7,13 @@ mod sem_checker;
 
 use clap::Parser;
 use std::{
-    error,
+    error as serror,
     fs::{self, File},
     io::{BufWriter, Write},
     path::PathBuf,
 };
+
+use error::Error;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -29,7 +32,7 @@ struct Cli {
     print_ast: bool,
 }
 
-fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, Box<dyn error::Error>> {
+fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, Error> {
     let mut v = vec![];
     for line in s.lines() {
         let mut l = line.split('=');
@@ -49,12 +52,18 @@ fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, Box<dyn error::Error>> {
     Ok(v)
 }
 
-fn main() -> Result<(), Box<dyn error::Error>> {
+fn main() -> Result<(), Box<dyn serror::Error>> {
     let cli = Cli::parse();
     let data: String = fs::read_to_string(cli.input)?.parse()?;
     let mut parser = parser::Parser::new(&data);
 
-    let mut stmts = parser.parse(false);
+    let mut stmts = match parser.parse(false) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
 
     let mut sem = sem_checker::SemChecker::default();
     sem.check_scripts(&stmts);
@@ -72,7 +81,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     if let Some(s) = cli.syms {
         syms = fs::read_to_string(s)?;
     }
-    compiler.add_syms(parse_syms(&syms)?);
+    compiler.add_syms(parse_syms(&syms).unwrap());
     let code = compiler.compile(&stmts);
 
     if let Some(o) = cli.output {

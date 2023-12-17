@@ -4,16 +4,20 @@ use std::{
     str::FromStr,
 };
 
+use crate::error::{Error, ErrorKind};
+
+use std::string::ToString;
+use strum_macros::Display;
 use strum_macros::EnumString;
 
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
     pub val: Option<Literal>,
-    pub loc: (usize, isize),
+    pub loc: (usize, usize),
 }
 
-#[derive(Copy, Clone, Debug, EnumString, PartialEq, Eq)]
+#[derive(Copy, Clone, Display, Debug, EnumString, PartialEq, Eq)]
 pub enum TokenKind {
     #[strum(serialize = "scr")]
     KwScr,
@@ -153,10 +157,7 @@ macro_rules! number_ops {
                         (Number::Float(x), y) | (y, Number::Float(x)) => Number::Float(x $op y.as_u32() as f32),
                         _ => {
                             let result = self.as_u32() $op rhs.as_u32();
-                            match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                                8 => Number::Int(result),
-                                e => panic!("{}", e),
-                            }
+                            Number::Int(result)
                         }
                     }
                 }
@@ -178,10 +179,7 @@ macro_rules! int_ops {
                         (Number::Float(_), _) | (_, Number::Float(_)) => panic!(),
                         _ => {
                             let result = self.as_u32() $op rhs.as_u32();
-                            match std::cmp::max(std::mem::size_of_val(&self), std::mem::size_of_val(&rhs)) {
-                                8 => Number::Int(result),
-                                e => panic!("{}", e),
-                            }
+                            Number::Int(result)
                         }
                     }
                 }
@@ -222,41 +220,43 @@ impl Display for Literal {
 
 pub struct Lexer {
     data: Vec<char>,
-    col: isize,
+    col: usize,
     line: usize,
     start: usize,
     curr: usize,
+    line_start: usize,
 }
 
 impl Lexer {
     pub fn new(data: &str) -> Self {
         Lexer {
             data: data.chars().collect(),
-            col: 0,
+            col: 1,
             line: 1,
             start: 0,
             curr: 0,
+            line_start: 0,
         }
     }
 
-    pub fn lex(&mut self) -> Token {
+    pub fn lex(&mut self) -> Result<Token, Error> {
         if !self.at_end() {
-            self.col += (self.curr - self.start) as isize;
+            self.col += self.curr - self.start;
             self.start = self.curr;
-            if let Some(t) = self.lex_token() {
-                return t;
+            if let Some(t) = self.lex_token()? {
+                return Ok(t);
             }
             return self.lex();
         }
-        self.create_token(TokenKind::Eof)
+        Ok(self.create_token(TokenKind::Eof))
     }
 
-    fn lex_token(&mut self) -> Option<Token> {
+    fn lex_token(&mut self) -> Result<Option<Token>, Error> {
         let c = self.next();
         match c {
-            '(' | ')' | '{' | '}' | '[' | ']' | ':' | ',' => {
-                Some(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
-            }
+            '(' | ')' | '{' | '}' | '[' | ']' | ':' | ',' => Ok(Some(
+                self.create_token(TokenKind::from_str(&c.to_string()).unwrap()),
+            )),
             '=' | '!' | '>' | '<' | '+' | '-' | '*' | '/' | '%' | '|' | '&' | '.' => {
                 if c == '/' {
                     if self.peek() == '/' {
@@ -276,19 +276,26 @@ impl Lexer {
                 let x = format!("{}{}", c, self.peek());
                 if let Ok(kind) = TokenKind::from_str(&x) {
                     self.curr += 1;
-                    Some(self.create_token(kind))
+                    Ok(Some(self.create_token(kind)))
                 } else {
-                    Some(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
+                    Ok(Some(self.create_token(
+                        TokenKind::from_str(&c.to_string()).unwrap(),
+                    )))
                 }
             }
-            ' ' | '\r' | '\t' => None,
+            ' ' | '\r' | '\t' => Ok(None),
             '\n' => {
                 self.line += 1;
-                self.col = -1;
-                Some(self.create_token(TokenKind::Newline))
+                self.col = 0;
+                self.line_start = self.curr;
+                Ok(Some(self.create_token(TokenKind::Newline)))
             }
-            _ if c.is_alphanumeric() || c == '_' => Some(self.identifier()),
-            _ => panic!(),
+            _ if c.is_alphanumeric() || c == '_' => Ok(Some(self.identifier())),
+            _ => Err(Error::new(
+                (self.line, self.col),
+                ErrorKind::UnexpectedChar(c),
+                self.curr_line(),
+            )),
         }
     }
 
@@ -360,6 +367,18 @@ impl Lexer {
 
     fn create_token(&self, kind: TokenKind) -> Token {
         self.create_token_literal(kind, None)
+    }
+
+    pub fn curr_line(&self) -> String {
+        for i in (self.line_start)..self.data.len() {
+            if *self.data.get(i).unwrap() == '\n' {
+                return self.data[self.line_start..i].iter().copied().collect();
+            }
+        }
+        self.data[self.line_start..self.data.len()]
+            .iter()
+            .copied()
+            .collect()
     }
 
     fn create_token_literal(&self, kind: TokenKind, literal: Option<Literal>) -> Token {

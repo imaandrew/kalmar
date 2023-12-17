@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::lexer::{Lexer, Literal, Number, Token, TokenKind};
+use crate::{
+    error::{Error, ErrorKind},
+    lexer::{Lexer, Literal, Number, Token, TokenKind},
+};
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -326,58 +329,58 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self, verbose: bool) -> Vec<Stmt> {
+    pub fn parse(&mut self, verbose: bool) -> Result<Vec<Stmt>, Error> {
         let mut stmts = vec![];
         self.verbose = verbose;
-        self.skip_newlines();
+        self.skip_newlines()?;
         while !self.lexer.at_end() {
-            stmts.push(self.declaration());
+            stmts.push(self.declaration()?);
             if !self.lexer.at_end() {
-                self.assert(TokenKind::Newline);
+                self.assert(TokenKind::Newline)?;
             }
-            self.skip_newlines();
+            self.skip_newlines()?;
         }
 
-        stmts
+        Ok(stmts)
     }
 
-    fn declaration(&mut self) -> Stmt {
-        self.assert(TokenKind::KwScr);
-        let ident = self.consume(TokenKind::Identifier);
-        Stmt::Script(
+    fn declaration(&mut self) -> Result<Stmt, Error> {
+        self.assert(TokenKind::KwScr)?;
+        let ident = self.consume(TokenKind::Identifier)?;
+        Ok(Stmt::Script(
             ident.val.unwrap(),
-            Box::new(self.block(Self::statement, true)),
-        )
+            Box::new(self.block(Self::statement, true)?),
+        ))
     }
 
-    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Stmt
+    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Result<Stmt, Error>
     where
-        F: Fn(&mut Self) -> Stmt,
+        F: Fn(&mut Self) -> Result<Stmt, Error>,
     {
-        self.assert(TokenKind::LBrace);
-        self.assert(TokenKind::Newline);
-        self.skip_newlines();
+        self.assert(TokenKind::LBrace)?;
+        self.assert(TokenKind::Newline)?;
+        self.skip_newlines()?;
         let mut stmts = vec![];
 
-        while !self.peek(TokenKind::RBrace) {
-            stmts.push(stmt_func(self));
+        while !self.peek(TokenKind::RBrace)? {
+            stmts.push(stmt_func(self)?);
             if end_stmt_newlines {
-                self.assert(TokenKind::Newline);
+                self.assert(TokenKind::Newline)?;
             }
-            self.skip_newlines();
+            self.skip_newlines()?;
         }
 
-        self.assert(TokenKind::RBrace);
+        self.assert(TokenKind::RBrace)?;
 
-        Stmt::Block(stmts)
+        Ok(Stmt::Block(stmts))
     }
 
-    fn statement(&mut self) -> Stmt {
-        let t = self.pop();
+    fn statement(&mut self) -> Result<Stmt, Error> {
+        let t = self.pop()?;
         match t.kind {
-            TokenKind::KwReturn => Stmt::Return,
-            TokenKind::KwBreakLoop => Stmt::BreakLoop,
-            TokenKind::KwBreakCase => Stmt::BreakCase,
+            TokenKind::KwReturn => Ok(Stmt::Return),
+            TokenKind::KwBreakLoop => Ok(Stmt::BreakLoop),
+            TokenKind::KwBreakCase => Ok(Stmt::BreakCase),
             TokenKind::KwGoto => self.goto_statement(),
             TokenKind::KwLoop => self.loop_statement(),
             TokenKind::KwIf => self.if_else_statement(),
@@ -386,127 +389,129 @@ impl Parser {
             TokenKind::KwChildThread => self.child_thread_statement(),
             TokenKind::KwSwitch => self.switch_statement(),
             TokenKind::Identifier => {
-                if self.peek(TokenKind::Colon) {
+                if self.peek(TokenKind::Colon)? {
                     self.tokens.push(t);
                     return self.label_statement();
                 }
                 self.tokens.push(t);
-                Stmt::Expr(self.expr(0))
+                Ok(Stmt::Expr(self.expr(0)?))
             }
             e => panic!("parsing not implemented for: {:?}", e),
         }
     }
 
-    fn goto_statement(&mut self) -> Stmt {
-        let ident = self.consume(TokenKind::Identifier);
+    fn goto_statement(&mut self) -> Result<Stmt, Error> {
+        let ident = self.consume(TokenKind::Identifier)?;
 
-        Stmt::Goto(ident.val.unwrap())
+        Ok(Stmt::Goto(ident.val.unwrap()))
     }
 
-    fn label_statement(&mut self) -> Stmt {
-        let ident = self.consume(TokenKind::Identifier);
-        self.assert(TokenKind::Colon);
+    fn label_statement(&mut self) -> Result<Stmt, Error> {
+        let ident = self.consume(TokenKind::Identifier)?;
+        self.assert(TokenKind::Colon)?;
 
-        Stmt::Label(ident.val.unwrap())
+        Ok(Stmt::Label(ident.val.unwrap()))
     }
 
-    fn loop_statement(&mut self) -> Stmt {
-        let loop_count = if self.peek(TokenKind::LBrace) {
+    fn loop_statement(&mut self) -> Result<Stmt, Error> {
+        let loop_count = if self.peek(TokenKind::LBrace)? {
             Expr::Identifier(Literal::Number(Number::Int(0)))
         } else {
-            self.expr(0)
+            self.expr(0)?
         };
 
-        let block = self.block(Self::statement, true);
+        let block = self.block(Self::statement, true)?;
 
-        Stmt::Loop(loop_count, Box::new(block))
+        Ok(Stmt::Loop(loop_count, Box::new(block)))
     }
 
-    fn if_else_statement(&mut self) -> Stmt {
-        let if_stmt = self.if_statement();
+    fn if_else_statement(&mut self) -> Result<Stmt, Error> {
+        let if_stmt = self.if_statement()?;
 
         let mut else_stmts = vec![];
 
-        while self.peek_over_newlines(TokenKind::KwElse) {
-            self.skip_newlines();
-            self.assert(TokenKind::KwElse);
-            else_stmts.push(self.else_statement());
+        while self.peek_over_newlines(TokenKind::KwElse)? {
+            self.skip_newlines()?;
+            self.assert(TokenKind::KwElse)?;
+            else_stmts.push(self.else_statement()?);
         }
 
-        Stmt::IfElse(Box::new(if_stmt), else_stmts)
+        Ok(Stmt::IfElse(Box::new(if_stmt), else_stmts))
     }
 
-    fn if_statement(&mut self) -> Stmt {
-        let if_expr = self.expr(0);
-        let if_block = self.block(Self::statement, true);
-        Stmt::If(if_expr, Box::new(if_block))
+    fn if_statement(&mut self) -> Result<Stmt, Error> {
+        let if_expr = self.expr(0)?;
+        let if_block = self.block(Self::statement, true)?;
+        Ok(Stmt::If(if_expr, Box::new(if_block)))
     }
 
-    fn else_statement(&mut self) -> Stmt {
-        if self.peek(TokenKind::KwIf) {
-            self.assert(TokenKind::KwIf);
-            let if_stmt = self.if_statement();
+    fn else_statement(&mut self) -> Result<Stmt, Error> {
+        Ok(if self.peek(TokenKind::KwIf)? {
+            self.assert(TokenKind::KwIf)?;
+            let if_stmt = self.if_statement()?;
             Stmt::Else(Some(Box::new(if_stmt)), None)
         } else {
-            let else_block = self.block(Self::statement, true);
+            let else_block = self.block(Self::statement, true)?;
             Stmt::Else(None, Some(Box::new(else_block)))
-        }
+        })
     }
 
-    fn jump_statement(&mut self) -> Stmt {
-        let ident = self.consume(TokenKind::Identifier);
-        Stmt::Jump(ident.val.unwrap())
+    fn jump_statement(&mut self) -> Result<Stmt, Error> {
+        let ident = self.consume(TokenKind::Identifier)?;
+        Ok(Stmt::Jump(ident.val.unwrap()))
     }
 
-    fn thread_statement(&mut self) -> Stmt {
-        Stmt::Thread(Box::new(self.block(Self::statement, true)))
+    fn thread_statement(&mut self) -> Result<Stmt, Error> {
+        Ok(Stmt::Thread(Box::new(self.block(Self::statement, true)?)))
     }
 
-    fn child_thread_statement(&mut self) -> Stmt {
-        Stmt::ChildThread(Box::new(self.block(Self::statement, true)))
+    fn child_thread_statement(&mut self) -> Result<Stmt, Error> {
+        Ok(Stmt::ChildThread(Box::new(
+            self.block(Self::statement, true)?,
+        )))
     }
 
-    fn switch_statement(&mut self) -> Stmt {
-        let val = self.expr(0);
-        let block = self.block(Self::case_statement, false);
+    fn switch_statement(&mut self) -> Result<Stmt, Error> {
+        let val = self.expr(0)?;
+        let block = self.block(Self::case_statement, false)?;
 
-        Stmt::Switch(val, Box::new(block))
+        Ok(Stmt::Switch(val, Box::new(block)))
     }
 
-    fn case_statement(&mut self) -> Stmt {
-        let case = match self.kind() {
+    fn case_statement(&mut self) -> Result<Stmt, Error> {
+        let case = match self.kind()? {
             TokenKind::KwDefault => {
-                self.pop();
+                self.pop()?;
                 Expr::Default
             }
-            _ => self.expr(0),
+            _ => self.expr(0)?,
         };
-        let block = self.block(Self::statement, true);
+        let block = self.block(Self::statement, true)?;
 
-        Stmt::CaseStmt(case, Box::new(block))
+        Ok(Stmt::CaseStmt(case, Box::new(block)))
     }
 
-    fn expr(&mut self, min_prec: u8) -> Expr {
-        let t = self.pop();
+    fn expr(&mut self, min_prec: u8) -> Result<Expr, Error> {
+        let t = self.pop()?;
         let mut left = match t.kind {
             TokenKind::Number => Expr::Identifier(t.val.unwrap()),
-            TokenKind::Identifier => match self.kind() {
+            TokenKind::Identifier => match self.kind()? {
                 TokenKind::LBracket => {
-                    self.pop();
-                    let idx = self.expr(0);
-                    self.assert(TokenKind::RBracket);
+                    self.pop()?;
+                    let idx = self.expr(0)?;
+                    self.assert(TokenKind::RBracket)?;
                     Expr::Array(t.val.unwrap(), Box::new(idx))
                 }
                 TokenKind::LParen => {
-                    self.pop();
+                    self.pop()?;
                     let mut args = vec![];
                     loop {
-                        match self.kind() {
+                        match self.kind()? {
                             TokenKind::RParen => {
-                                self.pop();
-                                return Expr::FuncCall(t.val.unwrap(), args);
+                                self.pop()?;
+                                return Ok(Expr::FuncCall(t.val.unwrap(), args));
                             }
-                            _ => args.push(self.expr(0)),
+                            _ => args.push(self.expr(0)?),
                         }
                     }
                 }
@@ -522,24 +527,38 @@ impl Parser {
             | TokenKind::LessEq
             | TokenKind::And => {
                 let op = UnOp::try_from(t.kind).unwrap();
-                let r = self.expr(op.precedence().1);
+                let r = self.expr(op.precedence().1)?;
                 Expr::UnOp(op, Box::new(r))
             }
             TokenKind::LParen => {
-                let expr = self.expr(0);
-                self.assert(TokenKind::RParen);
+                let expr = self.expr(0)?;
+                self.assert(TokenKind::RParen)?;
                 expr
             }
             t => panic!("Invalid token: {:?}", t),
         };
 
         loop {
-            let t = self.pop();
+            let t = self.pop()?;
             let op = match BinOp::try_from(t.kind) {
                 Ok(op) => op,
                 Err(_) => {
-                    self.tokens.push(t);
-                    break;
+                    // TODO: ew
+                    if matches!(
+                        t.kind,
+                        TokenKind::LBrace
+                            | TokenKind::RBracket
+                            | TokenKind::RParen
+                            | TokenKind::Newline
+                    ) {
+                        self.tokens.push(t);
+                        break;
+                    }
+                    return Err(Error::new(
+                        t.loc,
+                        ErrorKind::ExpectedBinOp(t),
+                        self.lexer.curr_line(),
+                    ));
                 }
             };
 
@@ -548,7 +567,7 @@ impl Parser {
                 break;
             }
 
-            let right = self.expr(op.precedence().1);
+            let right = self.expr(op.precedence().1)?;
             if op == BinOp::Assign {
                 if let Expr::Identifier(Literal::Identifier(s)) = &left {
                     if matches!(s.as_str(), "buffer" | "fbuffer" | "array" | "flag_array") {
@@ -560,65 +579,70 @@ impl Parser {
             }
             left = Expr::BinOp(op, Box::new(left), Box::new(right));
         }
-        left
+        Ok(left)
     }
 
-    fn pop(&mut self) -> Token {
-        self.tokens.pop().unwrap_or_else(|| {
-            let x = self.lexer.lex();
-            if self.verbose {
-                println!("{:?}", x);
+    fn pop(&mut self) -> Result<Token, Error> {
+        Ok(match self.tokens.pop() {
+            Some(x) => x,
+            None => {
+                let x = self.lexer.lex()?;
+                if self.verbose {
+                    println!("{:?}", x);
+                }
+                x
             }
-            x
         })
     }
 
-    fn kind(&mut self) -> TokenKind {
-        let t = self.pop();
+    fn kind(&mut self) -> Result<TokenKind, Error> {
+        let t = self.pop()?;
         let kind = t.kind;
         self.tokens.push(t);
-        kind
+        Ok(kind)
     }
 
-    fn consume(&mut self, kind: TokenKind) -> Token {
-        if self.peek(kind) {
+    fn consume(&mut self, kind: TokenKind) -> Result<Token, Error> {
+        if self.peek(kind)? {
             return self.pop();
         }
 
         panic!()
     }
 
-    fn peek(&mut self, kind: TokenKind) -> bool {
-        let tok = self.pop();
+    fn peek(&mut self, kind: TokenKind) -> Result<bool, Error> {
+        let tok = self.pop()?;
         let ret = tok.kind == kind;
         self.tokens.push(tok);
-        ret
+        Ok(ret)
     }
 
-    fn peek_over_newlines(&mut self, kind: TokenKind) -> bool {
-        let mut tok = self.pop();
+    fn peek_over_newlines(&mut self, kind: TokenKind) -> Result<bool, Error> {
+        let mut tok = self.pop()?;
         let mut toks = vec![];
         while tok.kind == TokenKind::Newline {
             toks.push(tok);
-            tok = self.pop();
+            tok = self.pop()?;
         }
         let ret = tok.kind == kind;
         self.tokens.push(tok);
         self.tokens.append(&mut toks);
-        ret
+        Ok(ret)
     }
 
-    fn assert(&mut self, kind: TokenKind) {
-        assert_eq!(self.pop().kind, kind)
+    fn assert(&mut self, kind: TokenKind) -> Result<(), Error> {
+        assert_eq!(self.pop()?.kind, kind);
+        Ok(())
     }
 
-    fn skip_newlines(&mut self) {
+    fn skip_newlines(&mut self) -> Result<(), Error> {
         loop {
-            let t = self.pop();
+            let t = self.pop()?;
             if t.kind != TokenKind::Newline {
                 self.tokens.push(t);
                 break;
             }
         }
+        Ok(())
     }
 }
