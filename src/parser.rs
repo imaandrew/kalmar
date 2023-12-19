@@ -603,11 +603,16 @@ impl Parser {
     }
 
     fn consume(&mut self, kind: TokenKind) -> Result<Token, Error> {
-        if self.peek(kind)? {
-            return self.pop();
+        let t = self.pop()?;
+        if t.kind == kind {
+            return Ok(t);
         }
 
-        panic!()
+        Err(Error::new(
+            t.loc,
+            ErrorKind::UnexpectedToken(kind, t),
+            self.lexer.curr_line(),
+        ))
     }
 
     fn peek(&mut self, kind: TokenKind) -> Result<bool, Error> {

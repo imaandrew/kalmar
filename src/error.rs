@@ -26,13 +26,14 @@ impl Error {
 pub enum ErrorKind {
     UnexpectedChar(char),
     ExpectedBinOp(Token),
+    UnexpectedToken(TokenKind, Token),
 }
 
 impl ErrorKind {
     fn get_len(&self) -> usize {
         match self {
             Self::UnexpectedChar(_) => 1,
-            Self::ExpectedBinOp(t) => match t.kind {
+            Self::ExpectedBinOp(t) | Self::UnexpectedToken(_, t) => match t.kind {
                 TokenKind::Number | TokenKind::Identifier => format!("{}", t.val.as_ref().unwrap()),
                 _ => format!("{}", t.kind),
             }
@@ -53,6 +54,9 @@ impl fmt::Display for ErrorKind {
                     _ => format!("{}", t.kind),
                 };
                 write!(f, "expected binary operator, found: {}", i)
+            }
+            Self::UnexpectedToken(ex, fnd) => {
+                write!(f, "expected token of type: {:?}, found: {:?}", ex, fnd.kind)
             }
         }
     }
