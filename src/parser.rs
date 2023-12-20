@@ -84,7 +84,7 @@ impl Display for Stmt {
                         writeln!(f, "Else ")?;
                         recursive_fmt(f, e, indent_level - 1)
                     } else {
-                        panic!()
+                        unreachable!()
                     }
                 }
                 Stmt::Jump(l) => writeln!(f, "Jump {}", l),

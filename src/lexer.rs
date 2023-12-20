@@ -176,7 +176,7 @@ macro_rules! int_ops {
 
                 fn $op_fn(self, rhs: Self) -> Self::Output {
                     match (&self, &rhs) {
-                        (Number::Float(_), _) | (_, Number::Float(_)) => panic!(),
+                        (Number::Float(_), _) | (_, Number::Float(_)) => unreachable!(),
                         _ => {
                             let result = self.as_u32() $op rhs.as_u32();
                             Number::Int(result)

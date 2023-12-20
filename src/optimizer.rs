@@ -48,7 +48,7 @@ fn collapse_stmt(stmt: &mut Stmt) {
 fn try_elim_if_else_stmt(stmt: &mut Stmt) {
     let (i, e) = match stmt {
         Stmt::IfElse(i, e) => (i, e),
-        _ => panic!(),
+        _ => unreachable!(),
     };
 
     fn try_elim_if_stmt(stmt: &mut Stmt) -> bool {
@@ -61,7 +61,7 @@ fn try_elim_if_else_stmt(stmt: &mut Stmt) {
                 false
             }
             Stmt::If(_, _) => true,
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 
@@ -80,7 +80,7 @@ fn try_elim_if_else_stmt(stmt: &mut Stmt) {
                 *stmt = std::mem::take(s);
                 return;
             }
-            _ => panic!(),
+            _ => unreachable!(),
         }
     }
 

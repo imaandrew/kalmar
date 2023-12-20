@@ -162,7 +162,7 @@ impl<'a> Compiler<'a> {
             Stmt::Label(n) => {
                 let lbl = match n {
                     Literal::Identifier(i) => i,
-                    _ => panic!(),
+                    _ => unreachable!(),
                 };
                 self.labels.insert(lbl.to_string(), self.num_labels);
                 add_op!(Label);
@@ -172,7 +172,7 @@ impl<'a> Compiler<'a> {
             Stmt::Goto(n) => {
                 let lbl = match n {
                     Literal::Identifier(i) => i,
-                    _ => panic!(),
+                    _ => unreachable!(),
                 };
                 add_op!(Goto);
                 bin.push(*self.labels.get(lbl).unwrap());

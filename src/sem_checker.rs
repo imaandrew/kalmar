@@ -267,7 +267,7 @@ impl<'a> SemChecker<'a> {
 
         let name = match ident {
             Literal::Identifier(i) => i,
-            _ => panic!(),
+            _ => unreachable!(),
         };
 
         if declared.contains(&name) {
