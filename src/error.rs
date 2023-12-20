@@ -2,21 +2,46 @@ use std::fmt;
 
 use crate::lexer::{Token, TokenKind};
 
+pub struct ContextPrinter<'a> {
+    ctxt: Vec<&'a str>,
+}
+
+impl<'a> ContextPrinter<'a> {
+    pub fn new(ctxt: &'a str) -> Self {
+        Self {
+            ctxt: ctxt.lines().collect(),
+        }
+    }
+
+    pub fn print(&self, err: &Error) {
+        let margin = err.pos.0.to_string().len();
+        let line_start = err.pos.1;
+        let line_len = err.underline_len;
+        eprintln!("{}", err);
+        eprintln!("{:>margin$} |", "");
+        eprintln!(
+            "{:<margin$} | {}",
+            err.pos.0,
+            self.ctxt.get(err.pos.0 - 1).unwrap()
+        );
+        eprintln!("{:>margin$} |{:>line_start$}{:^>line_len$}", "", "", "");
+        eprintln!("{:>margin$} |", "")
+    }
+}
+
 #[derive(Debug)]
 pub struct Error {
     pub pos: (usize, usize),
     pub kind: ErrorKind,
     pub underline_len: usize,
-    pub line: String,
 }
 
 impl Error {
-    pub fn new(pos: (usize, usize), kind: ErrorKind, line: String) -> Self {
+    pub fn new(pos: (usize, usize), kind: ErrorKind) -> Self {
         let l = kind.get_len();
         Self {
             pos,
             kind,
-            line,
             underline_len: l,
         }
     }
@@ -27,13 +52,18 @@ pub enum ErrorKind {
     UnexpectedChar(char),
     ExpectedBinOp(Token),
     UnexpectedToken(TokenKind, Token),
+    ExpectedStmt(Token),
+    ExpectedExpr(Token),
 }
 
 impl ErrorKind {
     fn get_len(&self) -> usize {
         match self {
             Self::UnexpectedChar(_) => 1,
-            Self::ExpectedBinOp(t) | Self::UnexpectedToken(_, t) => match t.kind {
+            Self::ExpectedBinOp(t)
+            | Self::UnexpectedToken(_, t)
+            | Self::ExpectedStmt(t)
+            | Self::ExpectedExpr(t) => match t.kind {
                 TokenKind::Number | TokenKind::Identifier => format!("{}", t.val.as_ref().unwrap()),
                 _ => format!("{}", t.kind),
             }
@@ -58,19 +88,14 @@ impl fmt::Display for ErrorKind {
             Self::UnexpectedToken(ex, fnd) => {
                 write!(f, "expected token of type: {:?}, found: {:?}", ex, fnd.kind)
             }
+            Self::ExpectedStmt(t) => write!(f, "expected statement, found: {:?}", t.kind),
+            Self::ExpectedExpr(t) => write!(f, "expected expression, found: {:?}", t.kind),
         }
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let margin = self.pos.0.to_string().len();
-        let line_start = self.pos.1 - 1;
-        let line_len = self.underline_len;
-        writeln!(f, "error: {}", self.kind)?;
-        writeln!(f, "{:>margin$} |", "")?;
-        writeln!(f, "{:<margin$} | {}", self.pos.0, self.line)?;
-        writeln!(f, "{:>margin$} | {:>line_start$}{:^>line_len$}", "", "", "")?;
-        writeln!(f, "{:>margin$} |", "")
+        write!(f, "error: {}", self.kind)
     }
 }

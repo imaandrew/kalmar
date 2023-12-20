@@ -56,11 +56,12 @@ fn main() -> Result<(), Box<dyn serror::Error>> {
     let cli = Cli::parse();
     let data: String = fs::read_to_string(cli.input)?.parse()?;
     let mut parser = parser::Parser::new(&data);
+    let printer = error::ContextPrinter::new(&data);
 
     let mut stmts = match parser.parse(false) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("{}", e);
+            printer.print(&e);
             std::process::exit(1);
         }
     };

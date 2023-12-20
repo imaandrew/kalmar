@@ -285,16 +285,16 @@ impl Lexer {
             }
             ' ' | '\r' | '\t' => Ok(None),
             '\n' => {
+                let t = self.create_token(TokenKind::Newline);
                 self.line += 1;
                 self.col = 0;
                 self.line_start = self.curr;
-                Ok(Some(self.create_token(TokenKind::Newline)))
+                Ok(Some(t))
             }
             _ if c.is_alphanumeric() || c == '_' => Ok(Some(self.identifier())),
             _ => Err(Error::new(
                 (self.line, self.col),
                 ErrorKind::UnexpectedChar(c),
-                self.curr_line(),
             )),
         }
     }
@@ -367,18 +367,6 @@ impl Lexer {
 
     fn create_token(&self, kind: TokenKind) -> Token {
         self.create_token_literal(kind, None)
-    }
-
-    pub fn curr_line(&self) -> String {
-        for i in (self.line_start)..self.data.len() {
-            if *self.data.get(i).unwrap() == '\n' {
-                return self.data[self.line_start..i].iter().copied().collect();
-            }
-        }
-        self.data[self.line_start..self.data.len()]
-            .iter()
-            .copied()
-            .collect()
     }
 
     fn create_token_literal(&self, kind: TokenKind, literal: Option<Literal>) -> Token {

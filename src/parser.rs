@@ -396,7 +396,7 @@ impl Parser {
                 self.tokens.push(t);
                 Ok(Stmt::Expr(self.expr(0)?))
             }
-            e => panic!("parsing not implemented for: {:?}", e),
+            _ => Err(Error::new(t.loc, ErrorKind::ExpectedStmt(t))),
         }
     }
 
@@ -535,7 +535,7 @@ impl Parser {
                 self.assert(TokenKind::RParen)?;
                 expr
             }
-            t => panic!("Invalid token: {:?}", t),
+            _ => return Err(Error::new(t.loc, ErrorKind::ExpectedExpr(t))),
         };
 
         loop {
@@ -554,11 +554,7 @@ impl Parser {
                         self.tokens.push(t);
                         break;
                     }
-                    return Err(Error::new(
-                        t.loc,
-                        ErrorKind::ExpectedBinOp(t),
-                        self.lexer.curr_line(),
-                    ));
+                    return Err(Error::new(t.loc, ErrorKind::ExpectedBinOp(t)));
                 }
             };
 
@@ -608,11 +604,7 @@ impl Parser {
             return Ok(t);
         }
 
-        Err(Error::new(
-            t.loc,
-            ErrorKind::UnexpectedToken(kind, t),
-            self.lexer.curr_line(),
-        ))
+        Err(Error::new(t.loc, ErrorKind::UnexpectedToken(kind, t)))
     }
 
     fn peek(&mut self, kind: TokenKind) -> Result<bool, Error> {
