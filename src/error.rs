@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, rc::Rc};
 
 use crate::lexer::{Token, TokenKind};
 
@@ -50,20 +50,24 @@ impl Error {
 #[derive(Debug)]
 pub enum ErrorKind {
     UnexpectedChar(char),
-    ExpectedBinOp(Token),
-    UnexpectedToken(TokenKind, Token),
-    ExpectedStmt(Token),
-    ExpectedExpr(Token),
+    ExpectedBinOp(Rc<Token>),
+    UnexpectedToken(TokenKind, Rc<Token>),
+    ExpectedStmt(Rc<Token>),
+    ExpectedExpr(Rc<Token>),
+    RedeclaredLabel(Rc<Token>),
+    RedeclaredScr(Rc<Token>),
 }
 
 impl ErrorKind {
     fn get_len(&self) -> usize {
         match self {
             Self::UnexpectedChar(_) => 1,
-            Self::ExpectedBinOp(t)
+            Self::ExpectedStmt(t)
+            | Self::ExpectedBinOp(t)
+            | Self::ExpectedExpr(t)
             | Self::UnexpectedToken(_, t)
-            | Self::ExpectedStmt(t)
-            | Self::ExpectedExpr(t) => match t.kind {
+            | Self::RedeclaredLabel(t)
+            | Self::RedeclaredScr(t) => match t.kind {
                 TokenKind::Number | TokenKind::Identifier => format!("{}", t.val.as_ref().unwrap()),
                 _ => format!("{}", t.kind),
             }
@@ -90,6 +94,8 @@ impl fmt::Display for ErrorKind {
             }
             Self::ExpectedStmt(t) => write!(f, "expected statement, found: {:?}", t.kind),
             Self::ExpectedExpr(t) => write!(f, "expected expression, found: {:?}", t.kind),
+            Self::RedeclaredLabel(t) => write!(f, "label: {} redeclared", t.val.as_ref().unwrap()),
+            Self::RedeclaredScr(t) => write!(f, "script: {} redeclared", t.val.as_ref().unwrap()),
         }
     }
 }

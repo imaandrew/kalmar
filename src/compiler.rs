@@ -1,9 +1,10 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use num_enum::TryFromPrimitive;
 
 use crate::lexer::Literal;
-use crate::parser::{BinOp, Expr, Stmt, UnOp};
+use crate::parser::{ASTNode, BinOp, Expr, Stmt, UnOp};
 
 #[derive(TryFromPrimitive)]
 #[repr(u8)]
@@ -130,7 +131,7 @@ impl<'a> Compiler<'a> {
         self.syms.extend(syms)
     }
 
-    pub fn compile(&mut self, stmts: &Vec<Stmt>) -> Vec<u32> {
+    pub fn compile(&mut self, stmts: &Vec<ASTNode>) -> Vec<u32> {
         let mut code = vec![];
         for s in stmts {
             code.append(&mut self.compile_stmt(s));
@@ -139,7 +140,7 @@ impl<'a> Compiler<'a> {
         code
     }
 
-    fn compile_stmt(&mut self, stmt: &Stmt) -> Vec<u32> {
+    fn compile_stmt(&mut self, stmt: &ASTNode) -> Vec<u32> {
         let mut bin = vec![];
 
         macro_rules! add_op {
@@ -148,7 +149,7 @@ impl<'a> Compiler<'a> {
             };
         }
 
-        match stmt {
+        match stmt.get_stmt() {
             Stmt::Script(_, s) => {
                 bin.append(&mut self.compile_stmt(s));
                 add_op!(End);
@@ -160,7 +161,7 @@ impl<'a> Compiler<'a> {
             }
             Stmt::Return => add_op!(Return),
             Stmt::Label(n) => {
-                let lbl = match n {
+                let lbl = match n.as_ref() {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
@@ -170,7 +171,7 @@ impl<'a> Compiler<'a> {
                 self.num_labels += 1;
             }
             Stmt::Goto(n) => {
-                let lbl = match n {
+                let lbl = match n.as_ref() {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
@@ -179,7 +180,11 @@ impl<'a> Compiler<'a> {
             }
             Stmt::Loop(e, s) => {
                 add_op!(Loop);
-                bin.append(&mut self.compile_expr(e));
+                if let Some(e) = e {
+                    bin.append(&mut self.compile_expr(e));
+                } else {
+                    bin.push(0);
+                }
                 bin.append(&mut self.compile_stmt(s));
                 add_op!(EndLoop)
             }
@@ -191,7 +196,7 @@ impl<'a> Compiler<'a> {
                 }
             }
             Stmt::If(e, s) => {
-                match e {
+                match e.get_expr() {
                     Expr::BinOp(_, _, _) => bin.append(&mut self.compile_expr(e)),
                     Expr::UnOp(UnOp::Bang, e) => {
                         let mut e = self.compile_expr(e);
@@ -223,7 +228,7 @@ impl<'a> Compiler<'a> {
                 add_op!(EndIf)
             }
             Stmt::Switch(e, s) => {
-                match e {
+                match e.get_expr() {
                     Expr::Array(_, _) => add_op!(Switch),
                     Expr::Identifier(_) => add_op!(SwitchConst),
                     _ => panic!(),
@@ -233,7 +238,7 @@ impl<'a> Compiler<'a> {
                 add_op!(EndSwitch);
             }
             Stmt::CaseStmt(e, s) => {
-                match e {
+                match e.get_expr() {
                     Expr::UnOp(op, e) => {
                         match op {
                             UnOp::Equal => add_op!(CaseEq),
@@ -287,7 +292,7 @@ impl<'a> Compiler<'a> {
             }
             Stmt::Jump(i) => {
                 add_op!(Jump);
-                bin.push(match i {
+                bin.push(match i.borrow() {
                     Literal::Number(n) => n.as_u32(),
                     _ => todo!(),
                 });
@@ -299,7 +304,7 @@ impl<'a> Compiler<'a> {
         bin
     }
 
-    fn compile_expr(&self, expr: &Expr) -> Vec<u32> {
+    fn compile_expr(&self, expr: &ASTNode) -> Vec<u32> {
         let mut bin = vec![];
 
         macro_rules! add_op {
@@ -308,8 +313,8 @@ impl<'a> Compiler<'a> {
             };
         }
 
-        match expr {
-            Expr::Identifier(lit) => match lit {
+        match expr.get_expr() {
+            Expr::Identifier(lit) => match lit.borrow() {
                 Literal::Number(n) => bin.push(n.as_u32()),
                 Literal::Identifier(i) => bin.push(*self.syms.get(i.as_str()).unwrap()),
                 _ => todo!(),
@@ -334,7 +339,7 @@ impl<'a> Compiler<'a> {
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::PlusEq => {
-                    if let Expr::Identifier(Literal::Number(n)) = **r {
+                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
                         bin.push(if n.is_float() { Op::AddF } else { Op::Add } as u32);
                     } else {
                         add_op!(Add);
@@ -343,7 +348,7 @@ impl<'a> Compiler<'a> {
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::MinusEq => {
-                    if let Expr::Identifier(Literal::Number(n)) = **r {
+                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
                         bin.push(if n.is_float() { Op::SubF } else { Op::Sub } as u32);
                     } else {
                         add_op!(Sub);
@@ -352,7 +357,7 @@ impl<'a> Compiler<'a> {
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::StarEq => {
-                    if let Expr::Identifier(Literal::Number(n)) = **r {
+                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
                         bin.push(if n.is_float() { Op::MulF } else { Op::Mul } as u32);
                     } else {
                         add_op!(Mul);
@@ -361,7 +366,7 @@ impl<'a> Compiler<'a> {
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::DivEq => {
-                    if let Expr::Identifier(Literal::Number(n)) = **r {
+                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
                         bin.push(if n.is_float() { Op::DivF } else { Op::Div } as u32);
                     } else {
                         add_op!(Div);
@@ -375,9 +380,9 @@ impl<'a> Compiler<'a> {
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::AndEq => {
-                    match **r {
+                    match r.get_expr() {
                         Expr::Array(_, _) => add_op!(BitwiseAnd),
-                        Expr::Identifier(Literal::Number(_)) => {
+                        Expr::Identifier(l) if matches!(l.borrow(), Literal::Number(_)) => {
                             add_op!(BitwiseAndConst)
                         }
                         _ => unreachable!(),
@@ -386,31 +391,37 @@ impl<'a> Compiler<'a> {
                     bin.append(&mut self.compile_expr(r));
                 }
                 BinOp::OrEq => {
-                    match **r {
+                    match r.get_expr() {
                         Expr::Array(_, _) => add_op!(BitwiseOr),
-                        Expr::Identifier(Literal::Number(_)) => add_op!(BitwiseOrConst),
+                        Expr::Identifier(l) if matches!(l.borrow(), Literal::Number(_)) => {
+                            add_op!(BitwiseOrConst)
+                        }
                         _ => unreachable!(),
                     }
                     bin.append(&mut self.compile_expr(l));
                     bin.append(&mut self.compile_expr(r));
                 }
-                BinOp::Assign => match r.as_ref() {
-                    Expr::Identifier(Literal::Number(n)) => {
-                        if n.is_float() {
-                            add_op!(SetF);
-                        } else {
-                            add_op!(Set);
+                BinOp::Assign => match r.get_expr() {
+                    Expr::Identifier(lit) if matches!(lit.borrow(), Literal::Number(_)) => {
+                        if let Literal::Number(n) = lit.borrow() {
+                            if n.is_float() {
+                                add_op!(SetF);
+                            } else {
+                                add_op!(Set);
+                            }
+                            bin.append(&mut self.compile_expr(l));
+                            bin.append(&mut self.compile_expr(r));
                         }
-                        bin.append(&mut self.compile_expr(l));
-                        bin.append(&mut self.compile_expr(r));
                     }
-                    Expr::Identifier(Literal::Identifier(i)) => {
-                        match i.as_str() {
-                            "buffer" => add_op!(BufPeek),
-                            "fbuffer" => add_op!(FBufPeek),
-                            _ => panic!(),
+                    Expr::Identifier(i) if matches!(i.borrow(), Literal::Identifier(_)) => {
+                        if let Literal::Identifier(i) = i.borrow() {
+                            match i.as_str() {
+                                "buffer" => add_op!(BufPeek),
+                                "fbuffer" => add_op!(FBufPeek),
+                                _ => panic!(),
+                            }
+                            bin.append(&mut self.compile_expr(l));
                         }
-                        bin.append(&mut self.compile_expr(l));
                     }
                     Expr::Array(_, _) => {
                         add_op!(Set);
@@ -422,10 +433,12 @@ impl<'a> Compiler<'a> {
                         bin.append(&mut self.compile_expr(l));
                         bin.append(&mut self.compile_expr(r));
                     }
-                    Expr::FuncCall(Literal::Identifier(s), a) => {
-                        bin.push(self.get_func(s, true).unwrap());
-                        for arg in a {
-                            bin.append(&mut self.compile_expr(arg));
+                    Expr::FuncCall(i, a) if matches!(i.borrow(), Literal::Identifier(_)) => {
+                        if let Literal::Identifier(s) = i.borrow() {
+                            bin.push(self.get_func(s, true).unwrap());
+                            for arg in a {
+                                bin.append(&mut self.compile_expr(arg));
+                            }
                         }
                     }
                     e => panic!("{:?}", e),
@@ -476,11 +489,9 @@ impl<'a> Compiler<'a> {
                         if num_vars == 0 {
                             break;
                         };
-                        let op = match r.as_ref() {
-                            Expr::Identifier(Literal::Identifier(s)) if s == "buffer" => {
-                                Op::BufRead1 as usize
-                            }
-                            Expr::Identifier(Literal::Identifier(s)) if s == "fbuffer" => {
+                        let op = match r.get_expr().get_literal() {
+                            Some(Literal::Identifier(s)) if s == "buffer" => Op::BufRead1 as usize,
+                            Some(Literal::Identifier(s)) if s == "fbuffer" => {
                                 Op::FBufRead1 as usize
                             }
                             _ => panic!(),
@@ -500,13 +511,13 @@ impl<'a> Compiler<'a> {
                 }
             },
             Expr::Array(ident, index) => {
-                let ident = match ident {
+                let ident = match ident.borrow() {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
 
-                let index = match **index {
-                    Expr::Identifier(Literal::Number(n)) => n.as_u32(),
+                let index = match index.get_expr().get_literal() {
+                    Some(Literal::Number(n)) => n.as_u32(),
                     _ => unreachable!(),
                 };
 
@@ -514,7 +525,7 @@ impl<'a> Compiler<'a> {
             }
             Expr::FuncCall(func, args) => {
                 add_op!(Call);
-                let addr = match func {
+                let addr = match func.borrow() {
                     Literal::Identifier(i) => self.get_func(i, false).unwrap(),
                     _ => unreachable!(),
                 };
@@ -525,7 +536,7 @@ impl<'a> Compiler<'a> {
                 }
             }
             Expr::ArrayAssign(ident, expr) => {
-                let ident = match ident {
+                let ident = match ident.borrow() {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };

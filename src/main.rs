@@ -67,9 +67,12 @@ fn main() -> Result<(), Box<dyn serror::Error>> {
     };
 
     let mut sem = sem_checker::SemChecker::default();
-    sem.check_scripts(&stmts);
+    if let Err(e) = sem.check_ast(&stmts) {
+        printer.print(&e);
+        std::process::exit(1);
+    }
 
-    optimizer::optimize_stmts(&mut stmts);
+    optimizer::optimize_ast(&mut stmts);
 
     if cli.print_ast {
         for s in &stmts {

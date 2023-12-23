@@ -1,6 +1,7 @@
 use std::{
     fmt::Display,
     ops::{Add, BitAnd, Div, Mul, Neg, Rem, Sub},
+    rc::Rc,
     str::FromStr,
 };
 
@@ -13,7 +14,7 @@ use strum_macros::EnumString;
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub val: Option<Literal>,
+    pub val: Option<Rc<Literal>>,
     pub loc: (usize, usize),
 }
 
@@ -373,7 +374,7 @@ impl Lexer {
         Token {
             kind,
             loc: (self.line, self.col),
-            val: literal,
+            val: literal.map(Rc::new),
         }
     }
 }

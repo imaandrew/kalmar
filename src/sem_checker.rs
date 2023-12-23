@@ -1,6 +1,9 @@
+use std::rc::Rc;
+
 use crate::{
+    error::{Error, ErrorKind},
     lexer::Literal,
-    parser::{BinOp, Expr, Stmt, UnOp},
+    parser::{ASTNode, BinOp, Expr, Stmt, UnOp},
 };
 
 #[derive(Debug, PartialEq)]
@@ -42,38 +45,47 @@ impl SemChecker<'_> {
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn check_scripts(&mut self, stmts: &'a Vec<Stmt>) {
-        self.check_stmts(stmts);
+    pub fn check_ast(&mut self, ast: &'a Vec<ASTNode>) -> Result<(), Error> {
+        self.check_nodes(ast)?;
         self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts);
+        Ok(())
     }
 
-    fn check_stmts(&mut self, stmts: &'a Vec<Stmt>) {
+    fn check_nodes(&mut self, stmts: &'a Vec<ASTNode>) -> Result<(), Error> {
         for stmt in stmts {
-            self.check_stmt(stmt);
+            self.check_stmt_node(stmt)?;
         }
+        Ok(())
     }
 
-    fn check_stmt(&mut self, stmt: &'a Stmt) {
-        match stmt {
+    fn check_stmt_node(&mut self, stmt: &'a ASTNode) -> Result<(), Error> {
+        match stmt.get_stmt() {
             Stmt::Script(i, s) => {
                 self.declared_labels.clear();
                 self.referenced_labels.clear();
-                let script = self.check_identifier_uniqueness(i, &self.declared_scripts, || ());
+                let script = self
+                    .check_identifier_uniqueness(i, &self.declared_scripts, || ())
+                    .ok_or(Error::new(
+                        stmt.get_token().as_ref().unwrap().loc,
+                        ErrorKind::RedeclaredScr(Rc::clone(stmt.get_token().as_ref().unwrap())),
+                    ))?;
                 self.declared_scripts.push(script);
-                self.check_stmt(s);
+                self.check_stmt_node(s)?;
                 self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels);
             }
-            Stmt::Block(s) => self.check_stmts(s),
-            Stmt::Label(l) => self.declared_labels.push(self.check_identifier_uniqueness(
-                l,
-                &self.declared_labels,
-                || {
+            Stmt::Block(s) => self.check_nodes(s)?,
+            Stmt::Label(l) => self.declared_labels.push(
+                self.check_identifier_uniqueness(l, &self.declared_labels, || {
                     if self.declared_labels.len() >= 16 {
                         panic!("Cannot have more than 16 labels per script");
                     }
-                },
-            )),
-            Stmt::Goto(l) => match l {
+                })
+                .ok_or(Error::new(
+                    stmt.get_token().as_ref().unwrap().loc,
+                    ErrorKind::RedeclaredLabel(Rc::clone(stmt.get_token().as_ref().unwrap())),
+                ))?,
+            ),
+            Stmt::Goto(l) => match l.as_ref() {
                 Literal::Identifier(i) => {
                     if !self.referenced_labels.contains(&i) {
                         self.referenced_labels.push(i);
@@ -82,28 +94,30 @@ impl<'a> SemChecker<'a> {
                 _ => panic!("Goto literal must be an identifier"),
             },
             Stmt::Loop(e, s) => {
-                assert_eq!(self.check_expr(e), Type::Integer);
-                self.check_stmt(s);
+                if let Some(e) = e {
+                    assert_eq!(self.check_expr_node(e), Type::Integer);
+                }
+                self.check_stmt_node(s)?;
             }
             Stmt::IfElse(i, e) => {
-                self.check_stmt(i);
-                self.check_stmts(e);
+                self.check_stmt_node(i)?;
+                self.check_nodes(e)?;
             }
             Stmt::If(e, s) => {
-                assert_eq!(self.check_expr(e), Type::Boolean);
-                self.check_stmt(s);
+                assert_eq!(self.check_expr_node(e), Type::Boolean);
+                self.check_stmt_node(s)?;
             }
             Stmt::Else(i, b) => {
                 assert_ne!(i.is_some(), b.is_some());
                 if let Some(e) = i {
-                    self.check_stmt(e);
+                    self.check_stmt_node(e)?;
                 }
 
                 if let Some(e) = b {
-                    self.check_stmt(e);
+                    self.check_stmt_node(e)?;
                 }
             }
-            Stmt::Jump(l) => match l {
+            Stmt::Jump(l) => match l.as_ref() {
                 Literal::Identifier(i) => {
                     if !self.referenced_scripts.contains(&i) {
                         self.referenced_scripts.push(i);
@@ -111,26 +125,31 @@ impl<'a> SemChecker<'a> {
                 }
                 _ => panic!("Invalid jump target: {:?}", l),
             },
-            Stmt::Thread(s) => self.check_stmt(s),
-            Stmt::ChildThread(s) => self.check_stmt(s),
+            Stmt::Thread(s) => self.check_stmt_node(s)?,
+            Stmt::ChildThread(s) => self.check_stmt_node(s)?,
             Stmt::Expr(e) => {
-                assert!(matches!(self.check_expr(e), Type::Assign | Type::FuncCall));
+                assert!(matches!(
+                    self.check_expr_node(e),
+                    Type::Assign | Type::FuncCall
+                ));
             }
             Stmt::Switch(e, s) => {
-                assert!(matches!(self.check_expr(e), Type::Integer | Type::Var));
-                self.check_stmt(s);
+                assert!(matches!(self.check_expr_node(e), Type::Integer | Type::Var));
+                self.check_stmt_node(s)?;
             }
             Stmt::CaseStmt(e, s) => {
-                self.check_expr(e);
-                self.check_stmt(s);
+                self.check_expr_node(e);
+                self.check_stmt_node(s)?;
             }
             Stmt::Return | Stmt::BreakCase | Stmt::BreakLoop | Stmt::Empty => (),
         };
+
+        Ok(())
     }
 
-    fn check_expr(&self, expr: &Expr) -> Type {
-        match expr {
-            Expr::Identifier(l) => match l {
+    fn check_expr_node(&self, expr: &ASTNode) -> Type {
+        match expr.get_expr() {
+            Expr::Identifier(l) => match l.as_ref() {
                 Literal::Identifier(_) => Type::Identifier,
                 Literal::Number(n) => {
                     if n.is_float() {
@@ -142,27 +161,27 @@ impl<'a> SemChecker<'a> {
                 Literal::Boolean(_) => Type::Boolean,
             },
             Expr::Array(_, e) => {
-                assert_eq!(self.check_expr(e), Type::Integer);
+                assert_eq!(self.check_expr_node(e), Type::Integer);
                 Type::Var
             }
             Expr::UnOp(op, expr) => self.check_unop_type(op, expr),
             Expr::BinOp(op, lhs, rhs) => self.check_binop_type(op, lhs, rhs),
             Expr::FuncCall(_, args) => {
                 for e in args {
-                    self.check_expr(e);
+                    self.check_expr_node(e);
                 }
                 Type::FuncCall
             }
             Expr::ArrayAssign(_, e) => {
-                assert!(matches!(self.check_expr(e), Type::Integer | Type::Var));
+                assert!(matches!(self.check_expr_node(e), Type::Integer | Type::Var));
                 Type::Assign
             }
             Expr::Default => Type::Case,
         }
     }
 
-    fn check_unop_type(&self, op: &UnOp, expr: &Expr) -> Type {
-        let t = self.check_expr(expr);
+    fn check_unop_type(&self, op: &UnOp, expr: &ASTNode) -> Type {
+        let t = self.check_expr_node(expr);
         match op {
             UnOp::Minus => {
                 assert!(matches!(t, Type::Integer | Type::Float));
@@ -188,9 +207,9 @@ impl<'a> SemChecker<'a> {
         }
     }
 
-    fn check_binop_type(&self, op: &BinOp, lhs: &Expr, rhs: &Expr) -> Type {
-        let l_type = self.check_expr(lhs);
-        let r_type = self.check_expr(rhs);
+    fn check_binop_type(&self, op: &BinOp, lhs: &ASTNode, rhs: &ASTNode) -> Type {
+        let l_type = self.check_expr_node(lhs);
+        let r_type = self.check_expr_node(rhs);
         match op {
             BinOp::Plus | BinOp::Minus | BinOp::Star | BinOp::Div => {
                 assert_eq!(l_type, r_type);
@@ -259,7 +278,7 @@ impl<'a> SemChecker<'a> {
         ident: &'a Literal,
         declared: &[&'a String],
         callback: F,
-    ) -> &'a String
+    ) -> Option<&'a String>
     where
         F: FnOnce(),
     {
@@ -271,10 +290,10 @@ impl<'a> SemChecker<'a> {
         };
 
         if declared.contains(&name) {
-            panic!("Script {} redeclared", name);
+            return None;
         }
 
-        name
+        Some(name)
     }
 
     fn verify_referenced_identifiers(&self, declared: &[&'a String], referenced: &Vec<&'a String>) {
