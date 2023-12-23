@@ -61,14 +61,14 @@ fn main() -> Result<(), Box<dyn serror::Error>> {
     let mut stmts = match parser.parse(false) {
         Ok(s) => s,
         Err(e) => {
-            printer.print(&e);
+            printer.print(&e)?;
             std::process::exit(1);
         }
     };
 
     let mut sem = sem_checker::SemChecker::default();
     if let Err(e) = sem.check_ast(&stmts) {
-        printer.print(&e);
+        printer.print(&e)?;
         std::process::exit(1);
     }
 

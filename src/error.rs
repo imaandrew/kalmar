@@ -1,7 +1,9 @@
-use std::{fmt, rc::Rc};
+use std::{fmt, io::Write, rc::Rc};
 
 use crate::lexer::{Token, TokenKind};
+use std::io::IsTerminal;
 
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 pub struct ContextPrinter<'a> {
     ctxt: Vec<&'a str>,
 }
@@ -13,19 +15,31 @@ impl<'a> ContextPrinter<'a> {
         }
     }
 
-    pub fn print(&self, err: &Error) {
+    pub fn print(&self, err: &Error) -> Result<(), std::io::Error> {
         let margin = err.pos.0.to_string().len();
         let line_start = err.pos.1;
         let line_len = err.underline_len;
-        eprintln!("{}", err);
-        eprintln!("{:>margin$} |", "");
-        eprintln!(
-            "{:<margin$} | {}",
-            err.pos.0,
-            self.ctxt.get(err.pos.0 - 1).unwrap()
-        );
-        eprintln!("{:>margin$} |{:>line_start$}{:^>line_len$}", "", "", "");
-        eprintln!("{:>margin$} |", "")
+        let mut stderr = StandardStream::stderr(if std::io::stdin().is_terminal() {
+            ColorChoice::Always
+        } else {
+            ColorChoice::Never
+        });
+        let mut c = ColorSpec::new();
+        stderr.set_color(c.set_fg(Some(Color::Red)))?;
+        write!(&mut stderr, "error",)?;
+        stderr.set_color(c.set_fg(None))?;
+        writeln!(&mut stderr, ": {}", err)?;
+        stderr.set_color(c.set_fg(Some(Color::Blue)))?;
+        writeln!(&mut stderr, "{:>margin$} |", "")?;
+        write!(&mut stderr, "{:<margin$} | ", err.pos.0,)?;
+        stderr.set_color(c.set_fg(None))?;
+        writeln!(&mut stderr, "{}", self.ctxt.get(err.pos.0 - 1).unwrap())?;
+        stderr.set_color(c.set_fg(Some(Color::Blue)))?;
+        write!(&mut stderr, "{:>margin$} |", "")?;
+        stderr.set_color(c.set_fg(Some(Color::Red)))?;
+        writeln!(&mut stderr, "{:>line_start$}{:^>line_len$}", "", "")?;
+        stderr.set_color(c.set_fg(Some(Color::Blue)))?;
+        writeln!(&mut stderr, "{:>margin$} |", "")
     }
 }
 
@@ -102,6 +116,6 @@ impl fmt::Display for ErrorKind {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error: {}", self.kind)
+        write!(f, "{}", self.kind)
     }
 }
