@@ -25,21 +25,38 @@ impl<'a> ContextPrinter<'a> {
             ColorChoice::Never
         });
         let mut c = ColorSpec::new();
-        stderr.set_color(c.set_fg(Some(Color::Red)))?;
-        write!(&mut stderr, "error",)?;
-        stderr.set_color(c.set_fg(None))?;
-        writeln!(&mut stderr, ": {}", err)?;
-        stderr.set_color(c.set_fg(Some(Color::Blue)))?;
-        writeln!(&mut stderr, "{:>margin$} |", "")?;
+
+        macro_rules! writeln_colour {
+            ($colour:ident, $($arg:tt)*) => {{
+                stderr.set_color(c.set_fg(Some(Color::$colour)))?;
+                writeln!(&mut stderr, $($arg)*)?;
+            }};
+            ($($arg:tt)*) => {{
+                stderr.set_color(c.set_fg(None))?;
+                writeln!(&mut stderr, $($arg)*)?;
+            }};
+        }
+
+        macro_rules! write_colour {
+            ($colour:ident, $($arg:tt)*) => {{
+                stderr.set_color(c.set_fg(Some(Color::$colour)))?;
+                write!(&mut stderr, $($arg)*)?;
+            }};
+        }
+
+        write_colour!(Red, "error");
+        writeln_colour!(": {}", err);
+
+        writeln_colour!(Blue, "{:>margin$} |", "");
+
         write!(&mut stderr, "{:<margin$} | ", err.pos.0,)?;
-        stderr.set_color(c.set_fg(None))?;
-        writeln!(&mut stderr, "{}", self.ctxt.get(err.pos.0 - 1).unwrap())?;
-        stderr.set_color(c.set_fg(Some(Color::Blue)))?;
-        write!(&mut stderr, "{:>margin$} |", "")?;
-        stderr.set_color(c.set_fg(Some(Color::Red)))?;
-        writeln!(&mut stderr, "{:>line_start$}{:^>line_len$}", "", "")?;
-        stderr.set_color(c.set_fg(Some(Color::Blue)))?;
-        writeln!(&mut stderr, "{:>margin$} |", "")
+        writeln_colour!("{}", self.ctxt.get(err.pos.0 - 1).unwrap());
+
+        write_colour!(Blue, "{:>margin$} |", "");
+        writeln_colour!(Red, "{:>line_start$}{:^>line_len$}", "", "");
+
+        writeln_colour!(Blue, "{:>margin$} |", "");
+        Ok(())
     }
 }
 
