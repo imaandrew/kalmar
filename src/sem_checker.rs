@@ -137,7 +137,7 @@ impl<'a> SemChecker<'a> {
                 assert!(matches!(self.check_expr_node(e), Type::Integer | Type::Var));
                 self.check_stmt_node(s)?;
             }
-            Stmt::CaseStmt(e, s) => {
+            Stmt::Case(e, s) => {
                 self.check_expr_node(e);
                 self.check_stmt_node(s)?;
             }

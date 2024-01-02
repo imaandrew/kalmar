@@ -42,7 +42,7 @@ fn collapse_stmt_node(stmt: &mut ASTNode) {
             fold_expr_op(e);
             collapse_stmt_node(s);
         }
-        Stmt::CaseStmt(e, s) => {
+        Stmt::Case(e, s) => {
             fold_expr_op(e);
             collapse_stmt_node(s);
         }
@@ -105,7 +105,7 @@ fn fold_redundant_blocks(stmt: &mut ASTNode) {
         | Stmt::Thread(s)
         | Stmt::ChildThread(s)
         | Stmt::Switch(_, s)
-        | Stmt::CaseStmt(_, s) => fold_redundant_blocks(s),
+        | Stmt::Case(_, s) => fold_redundant_blocks(s),
         Stmt::Block(s) => {
             for i in 0..s.len() {
                 let ss = s.get_mut(i).unwrap();

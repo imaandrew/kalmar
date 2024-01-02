@@ -101,7 +101,7 @@ pub enum Stmt {
     ChildThread(Box<ASTNode>),
     Expr(Box<ASTNode>),
     Switch(Box<ASTNode>, Box<ASTNode>),
-    CaseStmt(Box<ASTNode>, Box<ASTNode>),
+    Case(Box<ASTNode>, Box<ASTNode>),
     Empty,
 }
 
@@ -180,7 +180,7 @@ impl Display for Stmt {
                     writeln!(f, "Switch {}", e)?;
                     recursive_fmt(f, s.get_stmt(), indent_level)
                 }
-                Stmt::CaseStmt(e, s) => {
+                Stmt::Case(e, s) => {
                     writeln!(f, "Case {}", e)?;
                     recursive_fmt(f, s.get_stmt(), indent_level)
                 }
@@ -591,7 +591,7 @@ impl Parser {
         let block = self.block(Self::statement, true)?;
 
         Ok(ASTNode::stmt(
-            Stmt::CaseStmt(Box::new(case), Box::new(block)),
+            Stmt::Case(Box::new(case), Box::new(block)),
             None,
         ))
     }

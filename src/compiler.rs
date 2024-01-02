@@ -342,7 +342,7 @@ impl<'a> Compiler<'a> {
                 bin.append(&mut self.compile_stmt(s));
                 add_op!(EndSwitch);
             }
-            Stmt::CaseStmt(e, s) => {
+            Stmt::Case(e, s) => {
                 match e.get_expr() {
                     Expr::UnOp(op, e) => {
                         match op {
