@@ -246,8 +246,9 @@ impl<'a> SemChecker<'a> {
             | BinOp::GreaterEq
             | BinOp::Less
             | BinOp::LessEq => {
-                assert_eq!(l_type, r_type);
-                matches!(l_type, Type::Integer | Type::Float);
+                assert!(l_type == r_type || l_type == Type::Var || r_type == Type::Var);
+                assert!(matches!(l_type, Type::Integer | Type::Float | Type::Var));
+                assert!(matches!(r_type, Type::Integer | Type::Float | Type::Var));
                 Type::Boolean
             }
             BinOp::Assign => {
