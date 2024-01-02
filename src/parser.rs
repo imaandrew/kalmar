@@ -406,6 +406,7 @@ pub struct Parser {
     lexer: Lexer,
     tokens: Vec<Rc<Token>>,
     verbose: bool,
+    parsing_func_args: bool,
 }
 
 impl Parser {
@@ -414,6 +415,7 @@ impl Parser {
             lexer: Lexer::new(data),
             tokens: vec![],
             verbose: false,
+            parsing_func_args: false,
         }
     }
 
@@ -609,14 +611,19 @@ impl Parser {
                     TokenKind::LParen => {
                         self.pop()?;
                         let mut args = vec![];
+                        self.parsing_func_args = true;
                         loop {
                             match self.kind()? {
                                 TokenKind::RParen => {
                                     self.pop()?;
+                                    self.parsing_func_args = false;
                                     return Ok(ASTNode::expr(
                                         Expr::FuncCall(Rc::clone(t.val.as_ref().unwrap()), args),
                                         Some(Rc::clone(&t)),
                                     ));
+                                }
+                                TokenKind::Comma => {
+                                    self.pop()?;
                                 }
                                 _ => args.push(self.expr(0)?),
                             }
@@ -652,6 +659,10 @@ impl Parser {
 
         loop {
             let t = self.pop()?;
+            if self.parsing_func_args && t.kind == TokenKind::Comma {
+                self.tokens.push(t);
+                break;
+            }
             let op = match BinOp::try_from(t.kind) {
                 Ok(op) => op,
                 Err(_) => {
