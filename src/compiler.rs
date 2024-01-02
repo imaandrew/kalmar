@@ -106,6 +106,106 @@ enum Op {
     Op94,
 }
 
+impl Op {
+    fn get_arg_count(&self) -> u32 {
+        match self {
+            Self::End
+            | Self::Return
+            | Self::EndLoop
+            | Self::BreakLoop
+            | Self::EndIf
+            | Self::Else
+            | Self::Unbind
+            | Self::EndCaseGroup
+            | Self::BreakSwitch
+            | Self::EndThread
+            | Self::EndChildThread
+            | Self::Thread
+            | Self::ChildThread
+            | Self::EndSwitch => 0,
+            Self::Label
+            | Self::Goto
+            | Self::Loop
+            | Self::Switch
+            | Self::SwitchConst
+            | Self::CaseEq
+            | Self::CaseNe
+            | Self::CaseLt
+            | Self::CaseGt
+            | Self::CaseLe
+            | Self::CaseGe
+            | Self::CaseFlag
+            | Self::CaseOrEq
+            | Self::CaseAndEq
+            | Self::UseBuf
+            | Self::UseFBuf
+            | Self::UseArray
+            | Self::UseFlags
+            | Self::CaseDefault
+            | Self::WaitFrames
+            | Self::WaitSecs
+            | Self::Exec
+            | Self::ExecWait
+            | Self::KillThread
+            | Self::SetPriority
+            | Self::SetTimescale
+            | Self::SetGroup
+            | Self::SuspendGroup
+            | Self::ResumeGroup
+            | Self::SuspendOthers
+            | Self::ResumeOthers
+            | Self::SuspendThread
+            | Self::ResumeThread
+            | Self::BufPeek
+            | Self::FBufPeek
+            | Self::BufRead1
+            | Self::FBufRead1
+            | Self::Jump => 1,
+            Self::IfEq
+            | Self::IfNe
+            | Self::IfLt
+            | Self::IfGt
+            | Self::IfLe
+            | Self::IfGe
+            | Self::IfFlag
+            | Self::IfNotFlag
+            | Self::CaseRange
+            | Self::MallocArray
+            | Self::ExecGetTid
+            | Self::IsThreadRunning
+            | Self::Set
+            | Self::SetF
+            | Self::SetConst
+            | Self::Add
+            | Self::AddF
+            | Self::Sub
+            | Self::SubF
+            | Self::Mul
+            | Self::MulF
+            | Self::Div
+            | Self::DivF
+            | Self::Mod
+            | Self::BufRead2
+            | Self::FBufRead2
+            | Self::BitwiseAnd
+            | Self::BitwiseAndConst
+            | Self::BitwiseOr
+            | Self::BitwiseOrConst => 2,
+            Self::BufRead3 | Self::FBufRead3 => 3,
+            Self::BufRead4 | Self::FBufRead4 => 4,
+            Self::BindTrigger => 5,
+            Self::BindPadlock => 6,
+            Self::InternalFetch
+            | Self::DebugLog
+            | Self::DebugPrintVar
+            | Self::Op92
+            | Self::Op93
+            | Self::Op94
+            | Self::Call => unreachable!(),
+        }
+    }
+}
+
 pub struct Compiler<'a> {
     syms: HashMap<&'a str, u32>,
     labels: HashMap<String, u32>,
@@ -144,9 +244,10 @@ impl<'a> Compiler<'a> {
         let mut bin = vec![];
 
         macro_rules! add_op {
-            ($op:ident) => {
-                bin.push(Op::$op as u32)
-            };
+            ($op:ident) => {{
+                bin.push(Op::$op as u32);
+                bin.push(Op::$op.get_arg_count());
+            }};
         }
 
         match stmt.get_stmt() {
@@ -159,7 +260,9 @@ impl<'a> Compiler<'a> {
                     bin.append(&mut self.compile_stmt(s));
                 }
             }
-            Stmt::Return => add_op!(Return),
+            Stmt::Return => {
+                add_op!(Return);
+            }
             Stmt::Label(n) => {
                 let lbl = match n.as_ref() {
                     Literal::Identifier(i) => i,
@@ -186,14 +289,17 @@ impl<'a> Compiler<'a> {
                     bin.push(0);
                 }
                 bin.append(&mut self.compile_stmt(s));
-                add_op!(EndLoop)
+                add_op!(EndLoop);
             }
-            Stmt::BreakLoop => add_op!(BreakLoop),
+            Stmt::BreakLoop => {
+                add_op!(BreakLoop);
+            }
             Stmt::IfElse(i, e) => {
                 bin.append(&mut self.compile_stmt(i));
                 for expr in e {
                     bin.append(&mut self.compile_stmt(expr));
                 }
+                add_op!(EndIf);
             }
             Stmt::If(e, s) => {
                 match e.get_expr() {
@@ -212,11 +318,11 @@ impl<'a> Compiler<'a> {
                             _ => unreachable!(),
                         } as u32;
                         bin.append(&mut e);
+                        bin.push(2);
                     }
                     p => panic!("{:?}", p),
                 }
                 bin.append(&mut self.compile_stmt(s));
-                add_op!(EndIf)
             }
             Stmt::Else(Some(i), None) => {
                 add_op!(Else);
@@ -225,7 +331,6 @@ impl<'a> Compiler<'a> {
             Stmt::Else(None, Some(s)) => {
                 add_op!(Else);
                 bin.append(&mut self.compile_stmt(s));
-                add_op!(EndIf)
             }
             Stmt::Switch(e, s) => {
                 match e.get_expr() {
@@ -269,7 +374,9 @@ impl<'a> Compiler<'a> {
                             add_op!(EndCaseGroup);
                         }
                     }
-                    Expr::Default => add_op!(CaseDefault),
+                    Expr::Default => {
+                        add_op!(CaseDefault);
+                    }
                     Expr::Identifier(_) => {
                         add_op!(CaseEq);
                         bin.append(&mut self.compile_expr(e));
@@ -278,7 +385,9 @@ impl<'a> Compiler<'a> {
                 }
                 bin.append(&mut self.compile_stmt(s));
             }
-            Stmt::BreakCase => add_op!(BreakSwitch),
+            Stmt::BreakCase => {
+                add_op!(BreakSwitch);
+            }
             Stmt::Expr(e) => bin.append(&mut self.compile_expr(e)),
             Stmt::Thread(s) => {
                 add_op!(Thread);
@@ -308,9 +417,10 @@ impl<'a> Compiler<'a> {
         let mut bin = vec![];
 
         macro_rules! add_op {
-            ($op:ident) => {
-                bin.push(Op::$op as u32)
-            };
+            ($op:ident) => {{
+                bin.push(Op::$op as u32);
+                bin.push(Op::$op.get_arg_count());
+            }};
         }
 
         match expr.get_expr() {
@@ -340,7 +450,11 @@ impl<'a> Compiler<'a> {
                 }
                 BinOp::PlusEq => {
                     if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
-                        bin.push(if n.is_float() { Op::AddF } else { Op::Add } as u32);
+                        if n.is_float() {
+                            add_op!(AddF)
+                        } else {
+                            add_op!(Add)
+                        }
                     } else {
                         add_op!(Add);
                     }
@@ -349,7 +463,11 @@ impl<'a> Compiler<'a> {
                 }
                 BinOp::MinusEq => {
                     if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
-                        bin.push(if n.is_float() { Op::SubF } else { Op::Sub } as u32);
+                        if n.is_float() {
+                            add_op!(SubF)
+                        } else {
+                            add_op!(Sub)
+                        }
                     } else {
                         add_op!(Sub);
                     }
@@ -358,7 +476,11 @@ impl<'a> Compiler<'a> {
                 }
                 BinOp::StarEq => {
                     if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
-                        bin.push(if n.is_float() { Op::MulF } else { Op::Mul } as u32);
+                        if n.is_float() {
+                            add_op!(MulF)
+                        } else {
+                            add_op!(Mul)
+                        }
                     } else {
                         add_op!(Mul);
                     }
@@ -367,7 +489,11 @@ impl<'a> Compiler<'a> {
                 }
                 BinOp::DivEq => {
                     if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
-                        bin.push(if n.is_float() { Op::DivF } else { Op::Div } as u32);
+                        if n.is_float() {
+                            add_op!(DivF)
+                        } else {
+                            add_op!(Div)
+                        }
                     } else {
                         add_op!(Div);
                     }
@@ -435,7 +561,9 @@ impl<'a> Compiler<'a> {
                     }
                     Expr::FuncCall(i, a) if matches!(i.borrow(), Literal::Identifier(_)) => {
                         if let Literal::Identifier(s) = i.borrow() {
-                            bin.push(self.get_func(s, true).unwrap());
+                            let f = self.get_func(s, true).unwrap();
+                            bin.push(f.0);
+                            bin.push(f.1 as u32);
                             for arg in a {
                                 bin.append(&mut self.compile_expr(arg));
                             }
@@ -500,6 +628,7 @@ impl<'a> Compiler<'a> {
                         let num_times = num_vars / i;
                         num_vars %= i;
                         bin.push(op as u32);
+                        bin.push(num_times as u32);
                         for _ in 0..num_times {
                             bin.push(*vars.next().unwrap());
                         }
@@ -524,15 +653,25 @@ impl<'a> Compiler<'a> {
                 bin.push(get_var(ident, index));
             }
             Expr::FuncCall(func, args) => {
-                add_op!(Call);
                 let addr = match func.borrow() {
-                    Literal::Identifier(i) => self.get_func(i, false).unwrap(),
+                    Literal::Identifier(i) => self
+                        .get_func(i, false)
+                        .unwrap_or_else(|| panic!("Missing function: {}", i)),
                     _ => unreachable!(),
                 };
-                bin.push(addr);
-                bin.push(args.len().try_into().unwrap());
-                for arg in args {
-                    bin.append(&mut self.compile_expr(arg));
+                if addr.1 == -1 {
+                    bin.push(Op::Call as u32);
+                    bin.push(args.len() as u32 + 1);
+                    bin.push(addr.0);
+                    for arg in args {
+                        bin.append(&mut self.compile_expr(arg));
+                    }
+                } else {
+                    bin.push(addr.0);
+                    bin.push(addr.1 as u32);
+                    for arg in args {
+                        bin.append(&mut self.compile_expr(arg));
+                    }
                 }
             }
             Expr::ArrayAssign(ident, expr) => {
@@ -550,40 +689,50 @@ impl<'a> Compiler<'a> {
                 }
                 bin.append(&mut self.compile_expr(expr));
             }
-            Expr::Default => add_op!(CaseDefault),
+            Expr::Default => {
+                add_op!(CaseDefault);
+            }
         }
 
         bin
     }
 
-    fn get_func(&self, func: &str, returns_val: bool) -> Option<u32> {
-        match func {
-            "wait" => Some(Op::WaitFrames as u32),
-            "wait_sec" => Some(Op::WaitSecs as u32),
-            "alloc" => Some(Op::MallocArray as u32),
+    fn get_func(&self, func: &str, returns_val: bool) -> Option<(u32, i32)> {
+        let op = match func {
+            "wait" => Some(Op::WaitFrames),
+            "wait_sec" => Some(Op::WaitSecs),
+            "alloc" => Some(Op::MallocArray),
             "exec" => {
                 if returns_val {
-                    Some(Op::ExecGetTid as u32)
+                    Some(Op::ExecGetTid)
                 } else {
-                    Some(Op::Exec as u32)
+                    Some(Op::Exec)
                 }
             }
-            "exec_wait" => Some(Op::ExecWait as u32),
-            "bind" => Some(Op::BindTrigger as u32),
-            "unbind" => Some(Op::Unbind as u32),
-            "kill" => Some(Op::KillThread as u32),
-            "set_priority" => Some(Op::SetPriority as u32),
-            "set_timescale" => Some(Op::SetTimescale as u32),
-            "set_group" => Some(Op::SetGroup as u32),
-            "bind_lock" => Some(Op::BindPadlock as u32),
-            "suspend_all" => Some(Op::SuspendGroup as u32),
-            "resume_all" => Some(Op::ResumeGroup as u32),
-            "suspend_others" => Some(Op::SuspendOthers as u32),
-            "resume_others" => Some(Op::ResumeOthers as u32),
-            "suspend" => Some(Op::SuspendThread as u32),
-            "resume" => Some(Op::ResumeThread as u32),
-            "does_exist" => Some(Op::IsThreadRunning as u32),
-            e => self.syms.get(e).copied(),
+            "exec_wait" => Some(Op::ExecWait),
+            "bind" => Some(Op::BindTrigger),
+            "unbind" => Some(Op::Unbind),
+            "kill" => Some(Op::KillThread),
+            "set_priority" => Some(Op::SetPriority),
+            "set_timescale" => Some(Op::SetTimescale),
+            "set_group" => Some(Op::SetGroup),
+            "bind_lock" => Some(Op::BindPadlock),
+            "suspend_all" => Some(Op::SuspendGroup),
+            "resume_all" => Some(Op::ResumeGroup),
+            "suspend_others" => Some(Op::SuspendOthers),
+            "resume_others" => Some(Op::ResumeOthers),
+            "suspend" => Some(Op::SuspendThread),
+            "resume" => Some(Op::ResumeThread),
+            "does_exist" => Some(Op::IsThreadRunning),
+            _ => None,
+        };
+
+        match op {
+            Some(op) => {
+                let a = op.get_arg_count();
+                Some((op as u32, a as i32))
+            }
+            None => self.syms.get(func).copied().map(|x| (x, -1)),
         }
     }
 }
