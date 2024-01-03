@@ -600,7 +600,9 @@ impl Parser {
         let t = self.pop()?;
         let mut left = ASTNode::expr(
             match t.kind {
-                TokenKind::Number => Expr::Identifier(Rc::clone(t.val.as_ref().unwrap())),
+                TokenKind::Number | TokenKind::Boolean => {
+                    Expr::Identifier(Rc::clone(t.val.as_ref().unwrap()))
+                }
                 TokenKind::Identifier => match self.kind()? {
                     TokenKind::LBracket => {
                         self.pop()?;

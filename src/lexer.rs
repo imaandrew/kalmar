@@ -115,6 +115,8 @@ pub enum TokenKind {
     Newline,
     #[strum(disabled)]
     Identifier,
+    #[strum(disabled)]
+    Boolean,
     Eof,
 }
 
@@ -346,7 +348,13 @@ impl Lexer {
             return self.create_token(kind);
         };
 
-        self.create_token_literal(TokenKind::Identifier, Some(Literal::Identifier(text)))
+        if text == "true" {
+            self.create_token_literal(TokenKind::Boolean, Some(Literal::Boolean(true)))
+        } else if text == "false" {
+            self.create_token_literal(TokenKind::Boolean, Some(Literal::Boolean(false)))
+        } else {
+            self.create_token_literal(TokenKind::Identifier, Some(Literal::Identifier(text)))
+        }
     }
 
     fn next(&mut self) -> char {

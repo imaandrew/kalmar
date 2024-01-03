@@ -427,7 +427,7 @@ impl<'a> Compiler<'a> {
             Expr::Identifier(lit) => match lit.borrow() {
                 Literal::Number(n) => bin.push(n.as_u32()),
                 Literal::Identifier(i) => bin.push(*self.syms.get(i.as_str()).unwrap()),
-                _ => todo!(),
+                Literal::Boolean(b) => bin.push(if *b { 1 } else { 0 }),
             },
             Expr::UnOp(op, expr) => {
                 let e = self.compile_expr(expr);
