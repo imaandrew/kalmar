@@ -476,7 +476,6 @@ impl Parser {
 
     fn statement(&mut self) -> Result<ASTNode, Error> {
         let t = self.pop()?;
-        let t = Rc::new(t);
         let s = match t.kind {
             TokenKind::KwReturn => Ok(Stmt::Return),
             TokenKind::KwBreakLoop => Ok(Stmt::BreakLoop),
