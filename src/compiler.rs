@@ -567,6 +567,7 @@ impl<'a> Compiler<'a> {
                             for arg in a {
                                 bin.append(&mut self.compile_expr(arg));
                             }
+                            bin.append(&mut self.compile_expr(l));
                         }
                     }
                     e => panic!("{:?}", e),
