@@ -10,3 +10,4 @@ clap = { version = "4.2.4", features = ["derive"] }
 num_enum = "0.7.0"
 strum = "0.24.1"
 strum_macros = "0.24.3"
+termcolor = "1.4.0"
