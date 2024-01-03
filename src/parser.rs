@@ -137,8 +137,11 @@ impl Display for Stmt {
                 Stmt::Label(l) => writeln!(f, "Label {}", l),
                 Stmt::Goto(l) => writeln!(f, "Goto {}", l),
                 Stmt::Loop(e, s) => {
-                    // TODO: Fix unwrap
-                    writeln!(f, "Loop {}", e.as_ref().unwrap())?;
+                    if let Some(e) = e.as_ref() {
+                        writeln!(f, "Loop {}", e)?;
+                    } else {
+                        writeln!(f, "Loop")?;
+                    }
                     recursive_fmt(f, s.get_stmt(), indent_level)
                 }
                 Stmt::IfElse(i, e) => {
