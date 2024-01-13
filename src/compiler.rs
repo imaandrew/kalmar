@@ -741,9 +741,9 @@ impl<'a> Compiler<'a> {
 fn get_var(ident: &str, index: u32) -> u32 {
     let index = index as i32;
     (match ident {
-        "var" => index - 30000000,
+        "Var" => index - 30000000,
         "MapVar" => index - 50000000,
-        "flag" => index - 70000000,
+        "Flag" => index - 70000000,
         "MapFlag" => index - 90000000,
         "AreaFlag" => index - 110000000,
         "GameFlag" => index - 130000000,
