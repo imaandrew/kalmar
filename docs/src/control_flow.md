@@ -120,7 +120,7 @@ The following conditions are available:
 |<= a | expression is less than or equal to a |
 |> a | expression is greater than a |
 |>= a | expression is greater than or equal to a |
-|a | b | expression is equal to a or b |
+|a \| b | expression is equal to a or b |
 |a & b | expression is equal to a and b |
 |a..b | expression is between a and b (inclusive) |
 | & a | the bits of expression are set on a |

@@ -1,5 +1,7 @@
 # Summary
 
+[Introduction](README.md)
+
 - [Syntax](./syntax.md)
 - [Types](./types.md)
 - [Expressions](./expressions.md)
