@@ -1,0 +1,6 @@
+[book]
+title = "Language Reference"
+authors = ["imaandrew"]
+description = "Reference manual for the kalmar compiler and its scripting langauge"
+language = "en"
+multilingual = false
