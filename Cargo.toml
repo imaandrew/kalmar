@@ -1,6 +1,13 @@
 [package]
 name = "kalmar"
 version = "0.1.0"
+authors = "imaandrew"
+description = "A Paper Mario 64 scripting language compiler."
+documentation = "https://imaandrew.github.io/kalmar"
+homepage = "https://github.com/imaandrew/kalmar"
+repository = "https://github.com/imaandrew/kalmar"
+license = "MIT OR Apache-2.0"
+categories = ["command-line-utilities"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
