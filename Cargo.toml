@@ -1,7 +1,7 @@
 [package]
 name = "kalmar"
 version = "0.1.0"
-authors = "imaandrew"
+authors = ["imaandrew"]
 description = "A Paper Mario 64 scripting language compiler."
 documentation = "https://imaandrew.github.io/kalmar"
 homepage = "https://github.com/imaandrew/kalmar"
