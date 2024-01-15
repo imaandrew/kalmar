@@ -542,8 +542,8 @@ impl<'a> Compiler<'a> {
                     Expr::Identifier(i) if matches!(i.borrow(), Literal::Identifier(_)) => {
                         if let Literal::Identifier(i) = i.borrow() {
                             match i.as_str() {
-                                "buffer" => add_op!(BufPeek),
-                                "fbuffer" => add_op!(FBufPeek),
+                                "Buffer" => add_op!(BufPeek),
+                                "FBuffer" => add_op!(FBufPeek),
                                 _ => panic!(),
                             }
                             bin.append(&mut self.compile_expr(l));
@@ -619,8 +619,8 @@ impl<'a> Compiler<'a> {
                             break;
                         };
                         let op = match r.get_expr().get_literal() {
-                            Some(Literal::Identifier(s)) if s == "buffer" => Op::BufRead1 as usize,
-                            Some(Literal::Identifier(s)) if s == "fbuffer" => {
+                            Some(Literal::Identifier(s)) if s == "Buffer" => Op::BufRead1 as usize,
+                            Some(Literal::Identifier(s)) if s == "FBuffer" => {
                                 Op::FBufRead1 as usize
                             }
                             _ => panic!(),
@@ -682,10 +682,10 @@ impl<'a> Compiler<'a> {
                 };
 
                 match ident.as_str() {
-                    "buffer" => add_op!(UseBuf),
-                    "fbuffer" => add_op!(UseFBuf),
-                    "array" => add_op!(UseArray),
-                    "flag_array" => add_op!(UseFlags),
+                    "Buffer" => add_op!(UseBuf),
+                    "FBuffer" => add_op!(UseFBuf),
+                    "Array" => add_op!(UseArray),
+                    "FlagArray" => add_op!(UseFlags),
                     _ => panic!(),
                 }
                 bin.append(&mut self.compile_expr(expr));
@@ -749,8 +749,8 @@ fn get_var(ident: &str, index: u32) -> u32 {
         "GameFlag" => index - 130000000,
         "AreaByte" => index - 150000000,
         "GameByte" => index - 170000000,
-        "array" => index - 190000000,
-        "flag_array" => index - 210000000,
+        "Array" => index - 190000000,
+        "FlagArray" => index - 210000000,
         _ => panic!(),
     }) as u32
 }

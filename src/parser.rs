@@ -697,7 +697,7 @@ impl Parser {
                         Literal::Identifier(i) => i,
                         _ => unreachable!(),
                     };
-                    if matches!(s.as_str(), "buffer" | "fbuffer" | "array" | "flag_array") {
+                    if matches!(s.as_str(), "Buffer" | "FBuffer" | "Array" | "FlagArray") {
                         left = ASTNode::expr(
                             Expr::ArrayAssign(Rc::clone(l), Box::new(right)),
                             Some(Rc::clone(&t)),
