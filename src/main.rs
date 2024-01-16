@@ -27,6 +27,9 @@ struct Cli {
     /// Read symbols from <syms>
     #[arg(short, long)]
     syms: Option<PathBuf>,
+    // Address that script will be loaded at
+    #[arg(short, long)]
+    base_addr: u32,
     /// Print AST
     #[arg(long)]
     print_ast: bool,
@@ -80,7 +83,7 @@ fn main() -> Result<(), Box<dyn serror::Error>> {
         }
     }
 
-    let mut compiler = compiler::Compiler::new();
+    let mut compiler = compiler::Compiler::new(cli.base_addr);
     let mut syms = String::new();
     if let Some(s) = cli.syms {
         syms = fs::read_to_string(s)?;
