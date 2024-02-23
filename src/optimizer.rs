@@ -1,19 +1,36 @@
 use crate::{
     lexer::Literal,
-    parser::{ASTNode, BinOp, Expr, Stmt, UnOp},
+    parser::{BinOp, Expr, Stmt, UnOp},
 };
 
-use std::rc::Rc;
-
-pub fn optimize_ast(stmts: &mut [ASTNode]) {
-    for stmt in stmts {
+pub fn optimize_ast(stmts: &mut Vec<Stmt>) {
+    for (i, stmt) in stmts.iter_mut().enumerate() {
         collapse_stmt_node(stmt);
         fold_redundant_blocks(stmt);
+        /*
+        if let Some(n) = try_elim_if_else_stmt(stmt) {
+            let (left, right) = stmts.split_at_mut(i);
+
+            // Create an empty vector to replace the elements at the specified index
+            let mut replacement = Vec::new();
+        
+            // Append the elements from the left slice to the replacement vector
+            replacement.append(left);
+        
+            // Append the elements from the insert_vector to the replacement vector
+            replacement.append(&mut insert_vector.into());
+        
+            // Append the remaining elements from the right slice to the replacement vector
+            replacement.append(right);
+        
+            // Replace the elements in the main_vector with the elements in the replacement vector
+            *main_vector = replacement;
+        }
+        */
     }
 }
 
-fn collapse_stmt_node(stmt: &mut ASTNode) {
-    let stmt = stmt.get_mut_stmt();
+fn collapse_stmt_node(stmt: &mut Stmt) {
     match stmt {
         Stmt::Script(_, s) => collapse_stmt_node(s),
         Stmt::Block(s) => optimize_ast(s),
@@ -26,8 +43,6 @@ fn collapse_stmt_node(stmt: &mut ASTNode) {
         Stmt::IfElse(i, e) => {
             collapse_stmt_node(i);
             optimize_ast(e);
-
-            try_elim_if_else_stmt(stmt);
         }
         Stmt::If(e, s) => {
             fold_expr_op(e);
@@ -56,17 +71,14 @@ fn try_elim_if_else_stmt(stmt: &mut Stmt) {
         _ => unreachable!(),
     };
 
-    fn try_elim_if_stmt(stmt: &mut ASTNode) -> bool {
-        match stmt.get_mut_stmt() {
-            Stmt::If(e, s) if matches!(e.get_expr().get_literal(), Some(Literal::Boolean(_))) => {
-                if let Some(Literal::Boolean(b)) = e.get_expr().get_literal() {
-                    if *b {
-                        *stmt = std::mem::take(&mut *s);
-                        return true;
-                    }
-                    return false;
+    fn try_elim_if_stmt(stmt: &mut Stmt) -> bool {
+        match stmt {
+            Stmt::If(Expr::Identifier(Literal::Boolean(b)), s) => {
+                if *b {
+                    *stmt = std::mem::take(&mut *s);
+                    return true;
                 }
-                true
+                false
             }
             Stmt::If(_, _) => true,
             _ => unreachable!(),
@@ -78,7 +90,7 @@ fn try_elim_if_else_stmt(stmt: &mut Stmt) {
     }
 
     for stmt in e {
-        match stmt.get_mut_stmt() {
+        match stmt {
             Stmt::Else(Some(s), _) => {
                 if try_elim_if_stmt(s) {
                     return;
@@ -95,8 +107,8 @@ fn try_elim_if_else_stmt(stmt: &mut Stmt) {
     *stmt = Stmt::Empty;
 }
 
-fn fold_redundant_blocks(stmt: &mut ASTNode) {
-    match stmt.get_mut_stmt() {
+fn fold_redundant_blocks(stmt: &mut Stmt) {
+    match stmt {
         Stmt::Script(_, s)
         | Stmt::Loop(_, s)
         | Stmt::If(_, s)
@@ -110,7 +122,7 @@ fn fold_redundant_blocks(stmt: &mut ASTNode) {
             for i in 0..s.len() {
                 let ss = s.get_mut(i).unwrap();
                 fold_redundant_blocks(ss);
-                if let Stmt::Block(ss) = ss.get_mut_stmt() {
+                if let Stmt::Block(ss) = ss {
                     let mut ss = std::mem::take(ss);
                     s.remove(i);
                     s.append(&mut ss);
@@ -129,16 +141,15 @@ fn fold_redundant_blocks(stmt: &mut ASTNode) {
 
 macro_rules! generate_binops {
     ($expr:ident, $($binop:ident, $op:tt, $type:ident),*) => {
-        let expr = $expr.get_mut_expr();
-        match expr {
+        match $expr {
             Expr::BinOp(op, l, r) => {
                 fold_expr_op(l);
                 fold_expr_op(r);
                 match op {
                 $(
-                    BinOp::$binop => match (l.get_expr().get_literal(), r.get_expr().get_literal()) {
+                    BinOp::$binop => match (l.get_literal(), r.get_literal()) {
                         (Some(Literal::Number(x)), Some(Literal::Number(y))) => {
-                            *expr = Expr::Identifier(Rc::new(Literal::$type(*x $op *y)));
+                            *$expr = Expr::Identifier(Literal::$type(*x $op *y));
                         }
                         _ => (),
                     }
@@ -150,7 +161,7 @@ macro_rules! generate_binops {
     };
 }
 
-fn fold_expr_op(expr: &mut ASTNode) {
+fn fold_expr_op(expr: &mut Expr) {
     generate_binops!(
         expr,
         Plus, +, Number,
@@ -167,11 +178,10 @@ fn fold_expr_op(expr: &mut ASTNode) {
         LessEq, <=, Boolean
     );
 
-    let expr = expr.get_mut_expr();
     match expr {
         Expr::UnOp(op, e) => match op {
-            UnOp::Minus => match e.get_expr().get_literal() {
-                Some(Literal::Number(n)) => *expr = Expr::Identifier(Rc::new(Literal::Number(-*n))),
+            UnOp::Minus => match e.get_literal() {
+                Some(Literal::Number(n)) => *expr = Expr::Identifier(Literal::Number(-*n)),
                 _ => {
                     fold_expr_op(e);
                 }

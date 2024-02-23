@@ -6,102 +6,24 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ASTNode {
-    node: ASTType,
-    token: Option<Rc<Token>>,
-}
-
-#[derive(Debug)]
-enum ASTType {
-    Stmt(Stmt),
-    Expr(Expr),
-}
-
-impl ASTNode {
-    fn stmt(stmt: Stmt, token: Option<Rc<Token>>) -> Self {
-        Self {
-            node: ASTType::Stmt(stmt),
-            token,
-        }
-    }
-
-    fn expr(expr: Expr, token: Option<Rc<Token>>) -> Self {
-        Self {
-            node: ASTType::Expr(expr),
-            token,
-        }
-    }
-
-    pub fn get_stmt(&self) -> &Stmt {
-        match &self.node {
-            ASTType::Stmt(s) => s,
-            _ => panic!(),
-        }
-    }
-
-    pub fn get_mut_stmt(&mut self) -> &mut Stmt {
-        match &mut self.node {
-            ASTType::Stmt(s) => s,
-            _ => panic!(),
-        }
-    }
-
-    pub fn get_expr(&self) -> &Expr {
-        match &self.node {
-            ASTType::Expr(e) => e,
-            _ => panic!(),
-        }
-    }
-
-    pub fn get_mut_expr(&mut self) -> &mut Expr {
-        match &mut self.node {
-            ASTType::Expr(e) => e,
-            _ => panic!(),
-        }
-    }
-
-    pub fn get_token(&self) -> &Option<Rc<Token>> {
-        &self.token
-    }
-}
-
-impl Display for ASTNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.node {
-            ASTType::Stmt(s) => write!(f, "{}", s),
-            ASTType::Expr(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl Default for ASTNode {
-    fn default() -> Self {
-        Self {
-            node: ASTType::Stmt(Stmt::Empty),
-            token: None,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub enum Stmt {
-    Script(Rc<Literal>, Box<ASTNode>),
-    Block(Vec<ASTNode>),
+    Script(Literal, Box<Self>),
+    Block(Vec<Self>),
     Return,
     BreakLoop,
     BreakCase,
-    Label(Rc<Literal>),
-    Goto(Rc<Literal>),
-    Loop(Option<Box<ASTNode>>, Box<ASTNode>),
-    IfElse(Box<ASTNode>, Vec<ASTNode>),
-    If(Box<ASTNode>, Box<ASTNode>),
-    Else(Option<Box<ASTNode>>, Option<Box<ASTNode>>),
-    Jump(Rc<Literal>),
-    Thread(Box<ASTNode>),
-    ChildThread(Box<ASTNode>),
-    Expr(Box<ASTNode>),
-    Switch(Box<ASTNode>, Box<ASTNode>),
-    Case(Box<ASTNode>, Box<ASTNode>),
+    Label(Literal),
+    Goto(Literal),
+    Loop(Option<Expr>, Box<Self>),
+    IfElse(Box<Self>, Vec<Self>),
+    If(Expr, Box<Self>),
+    Else(Option<Box<Stmt>>, Option<Box<Stmt>>),
+    Jump(Literal),
+    Thread(Box<Self>),
+    ChildThread(Box<Self>),
+    Expr(Expr),
+    Switch(Expr, Box<Self>),
+    Case(Expr, Box<Self>),
     Empty,
 }
 
@@ -122,12 +44,12 @@ impl Display for Stmt {
             match stmt {
                 Stmt::Script(id, stmts) => {
                     writeln!(f, "Script {}", id)?;
-                    recursive_fmt(f, stmts.get_stmt(), indent_level)
+                    recursive_fmt(f, stmts, indent_level)
                 }
                 Stmt::Block(stmts) => {
                     for s in stmts {
                         write!(f, "{}", indent)?;
-                        recursive_fmt(f, s.get_stmt(), indent_level + 1)?;
+                        recursive_fmt(f, s, indent_level + 1)?;
                     }
                     Ok(())
                 }
@@ -142,29 +64,29 @@ impl Display for Stmt {
                     } else {
                         writeln!(f, "Loop")?;
                     }
-                    recursive_fmt(f, s.get_stmt(), indent_level)
+                    recursive_fmt(f, s, indent_level)
                 }
                 Stmt::IfElse(i, e) => {
-                    recursive_fmt(f, i.get_stmt(), indent_level)?;
+                    recursive_fmt(f, i, indent_level)?;
                     for s in e {
                         let indent = " ".repeat(indent_level * 2);
                         write!(f, "{}", indent)?;
-                        recursive_fmt(f, s.get_stmt(), indent_level + 1)?;
+                        recursive_fmt(f, s, indent_level + 1)?;
                     }
 
                     Ok(())
                 }
                 Stmt::If(e, s) => {
                     writeln!(f, "If {}", e)?;
-                    recursive_fmt(f, s.get_stmt(), indent_level)
+                    recursive_fmt(f, s, indent_level)
                 }
                 Stmt::Else(i, e) => {
                     if let Some(i) = i {
                         write!(f, "Else ")?;
-                        recursive_fmt(f, i.get_stmt(), indent_level - 1)
+                        recursive_fmt(f, i, indent_level - 1)
                     } else if let Some(e) = e {
                         writeln!(f, "Else ")?;
-                        recursive_fmt(f, e.get_stmt(), indent_level - 1)
+                        recursive_fmt(f, e, indent_level - 1)
                     } else {
                         unreachable!()
                     }
@@ -172,20 +94,20 @@ impl Display for Stmt {
                 Stmt::Jump(l) => writeln!(f, "Jump {}", l),
                 Stmt::Thread(s) => {
                     writeln!(f, "Thread")?;
-                    recursive_fmt(f, s.get_stmt(), indent_level)
+                    recursive_fmt(f, s, indent_level)
                 }
                 Stmt::ChildThread(s) => {
                     writeln!(f, "ChildThread")?;
-                    recursive_fmt(f, s.get_stmt(), indent_level)
+                    recursive_fmt(f, s, indent_level)
                 }
                 Stmt::Expr(e) => writeln!(f, "{}", e),
                 Stmt::Switch(e, s) => {
                     writeln!(f, "Switch {}", e)?;
-                    recursive_fmt(f, s.get_stmt(), indent_level)
+                    recursive_fmt(f, s, indent_level)
                 }
                 Stmt::Case(e, s) => {
                     writeln!(f, "Case {}", e)?;
-                    recursive_fmt(f, s.get_stmt(), indent_level)
+                    recursive_fmt(f, s, indent_level)
                 }
                 Stmt::Empty => writeln!(f, "Empty"),
             }
@@ -367,12 +289,12 @@ impl BinOp {
 
 #[derive(Debug)]
 pub enum Expr {
-    Identifier(Rc<Literal>),
-    Array(Rc<Literal>, Box<ASTNode>),
-    UnOp(UnOp, Box<ASTNode>),
-    BinOp(BinOp, Box<ASTNode>, Box<ASTNode>),
-    FuncCall(Rc<Literal>, Vec<ASTNode>),
-    ArrayAssign(Rc<Literal>, Box<ASTNode>),
+    Identifier(Literal),
+    Array(Literal, Box<Expr>),
+    UnOp(UnOp, Box<Expr>),
+    BinOp(BinOp, Box<Expr>, Box<Expr>),
+    FuncCall(Literal, Vec<Expr>),
+    ArrayAssign(Literal, Box<Expr>),
     Default,
 }
 
@@ -407,7 +329,7 @@ impl Display for Expr {
 
 pub struct Parser {
     lexer: Lexer,
-    tokens: Vec<Rc<Token>>,
+    tokens: Vec<Token>,
     verbose: bool,
     parsing_func_args: bool,
 }
@@ -422,7 +344,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self, verbose: bool) -> Result<Vec<ASTNode>, Error> {
+    pub fn parse(&mut self, verbose: bool) -> Result<Vec<Stmt>, Error> {
         let mut stmts = vec![];
         self.verbose = verbose;
         self.skip_newlines()?;
@@ -440,21 +362,18 @@ impl Parser {
         Ok(stmts)
     }
 
-    fn declaration(&mut self) -> Result<ASTNode, Error> {
+    fn declaration(&mut self) -> Result<Stmt, Error> {
         self.assert(TokenKind::KwScr)?;
         let ident = self.consume(TokenKind::Identifier)?;
-        Ok(ASTNode::stmt(
-            Stmt::Script(
-                Rc::clone(ident.val.as_ref().unwrap()),
-                Box::new(self.block(Self::statement, true)?),
-            ),
-            Some(Rc::clone(&ident)),
+        Ok(Stmt::Script(
+            ident.val.unwrap(),
+            Box::new(self.block(Self::statement, true)?),
         ))
     }
 
-    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Result<ASTNode, Error>
+    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Result<Stmt, Error>
     where
-        F: Fn(&mut Self) -> Result<ASTNode, Error>,
+        F: Fn(&mut Self) -> Result<Stmt, Error>,
     {
         let t = self.consume(TokenKind::LBrace)?;
         self.assert(TokenKind::Newline)?;
@@ -471,10 +390,10 @@ impl Parser {
 
         self.assert(TokenKind::RBrace)?;
 
-        Ok(ASTNode::stmt(Stmt::Block(stmts), Some(Rc::clone(&t))))
+        Ok(Stmt::Block(stmts))
     }
 
-    fn statement(&mut self) -> Result<ASTNode, Error> {
+    fn statement(&mut self) -> Result<Stmt, Error> {
         let t = self.pop()?;
         let s = match t.kind {
             TokenKind::KwReturn => Ok(Stmt::Return),
@@ -489,39 +408,36 @@ impl Parser {
             TokenKind::KwSwitch => self.switch_statement(),
             TokenKind::Identifier => {
                 if self.peek(TokenKind::Colon)? {
-                    self.tokens.push(Rc::clone(&t));
+                    self.tokens.push(t);
                     return self.label_statement();
                 }
-                self.tokens.push(Rc::clone(&t));
-                Ok(Stmt::Expr(Box::new(self.expr(0)?)))
+                self.tokens.push(t);
+                Ok(Stmt::Expr(self.expr(0)?))
             }
             _ => Err(Error::new(t.loc, ErrorKind::ExpectedStmt(Rc::clone(&t)))),
         }?;
 
-        Ok(ASTNode::stmt(s, Some(Rc::clone(&t))))
+        Ok(s)
     }
 
     fn goto_statement(&mut self) -> Result<Stmt, Error> {
         let ident = self.consume(TokenKind::Identifier)?;
 
-        Ok(Stmt::Goto(Rc::clone(ident.val.as_ref().unwrap())))
+        Ok(Stmt::Goto(ident.val.unwrap()))
     }
 
-    fn label_statement(&mut self) -> Result<ASTNode, Error> {
+    fn label_statement(&mut self) -> Result<Stmt, Error> {
         let ident = self.consume(TokenKind::Identifier)?;
         self.assert(TokenKind::Colon)?;
 
-        Ok(ASTNode::stmt(
-            Stmt::Label(Rc::clone(ident.val.as_ref().unwrap())),
-            Some(Rc::clone(&ident)),
-        ))
+        Ok(Stmt::Label(ident.val.unwrap()))
     }
 
     fn loop_statement(&mut self) -> Result<Stmt, Error> {
         let loop_count = if self.peek(TokenKind::LBrace)? {
             None
         } else {
-            Some(Box::new(self.expr(0)?))
+            Some(self.expr(0)?)
         };
 
         let block = self.block(Self::statement, true)?;
@@ -543,29 +459,26 @@ impl Parser {
         Ok(Stmt::IfElse(Box::new(if_stmt), else_stmts))
     }
 
-    fn if_statement(&mut self) -> Result<ASTNode, Error> {
+    fn if_statement(&mut self) -> Result<Stmt, Error> {
         let if_expr = self.expr(0)?;
         let if_block = self.block(Self::statement, true)?;
-        Ok(ASTNode::stmt(
-            Stmt::If(Box::new(if_expr), Box::new(if_block)),
-            None,
-        ))
+        Ok(Stmt::If(if_expr, Box::new(if_block)))
     }
 
-    fn else_statement(&mut self) -> Result<ASTNode, Error> {
+    fn else_statement(&mut self) -> Result<Stmt, Error> {
         Ok(if self.peek(TokenKind::KwIf)? {
             self.assert(TokenKind::KwIf)?;
             let if_stmt = self.if_statement()?;
-            ASTNode::stmt(Stmt::Else(Some(Box::new(if_stmt)), None), None)
+            Stmt::Else(Some(Box::new(if_stmt)), None)
         } else {
             let else_block = self.block(Self::statement, true)?;
-            ASTNode::stmt(Stmt::Else(None, Some(Box::new(else_block))), None)
+            Stmt::Else(None, Some(Box::new(else_block)))
         })
     }
 
     fn jump_statement(&mut self) -> Result<Stmt, Error> {
         let ident = self.consume(TokenKind::Identifier)?;
-        Ok(Stmt::Jump(Rc::clone(ident.val.as_ref().unwrap())))
+        Ok(Stmt::Jump(ident.val.unwrap()))
     }
 
     fn thread_statement(&mut self) -> Result<Stmt, Error> {
@@ -582,35 +495,31 @@ impl Parser {
         let val = self.expr(0)?;
         let block = self.block(Self::case_statement, false)?;
 
-        Ok(Stmt::Switch(Box::new(val), Box::new(block)))
+        Ok(Stmt::Switch(val, Box::new(block)))
     }
 
-    fn case_statement(&mut self) -> Result<ASTNode, Error> {
+    fn case_statement(&mut self) -> Result<Stmt, Error> {
         let case = match self.kind()? {
-            TokenKind::KwDefault => ASTNode::expr(Expr::Default, Some(Rc::clone(&self.pop()?))),
+            TokenKind::KwDefault => Expr::Default,
             _ => self.expr(0)?,
         };
         let block = self.block(Self::statement, true)?;
 
-        Ok(ASTNode::stmt(
-            Stmt::Case(Box::new(case), Box::new(block)),
-            None,
-        ))
+        Ok(Stmt::Case(case, Box::new(block)))
     }
 
-    fn expr(&mut self, min_prec: u8) -> Result<ASTNode, Error> {
+    fn expr(&mut self, min_prec: u8) -> Result<Expr, Error> {
         let t = self.pop()?;
-        let mut left = ASTNode::expr(
-            match t.kind {
+        let mut left = match t.kind {
                 TokenKind::Number | TokenKind::Boolean => {
-                    Expr::Identifier(Rc::clone(t.val.as_ref().unwrap()))
+                    Expr::Identifier(t.val.unwrap())
                 }
                 TokenKind::Identifier => match self.kind()? {
                     TokenKind::LBracket => {
                         self.pop()?;
                         let idx = self.expr(0)?;
                         self.assert(TokenKind::RBracket)?;
-                        Expr::Array(Rc::clone(t.val.as_ref().unwrap()), Box::new(idx))
+                        Expr::Array(t.val.unwrap(), Box::new(idx))
                     }
                     TokenKind::LParen => {
                         self.pop()?;
@@ -621,10 +530,7 @@ impl Parser {
                                 TokenKind::RParen => {
                                     self.pop()?;
                                     self.parsing_func_args = false;
-                                    return Ok(ASTNode::expr(
-                                        Expr::FuncCall(Rc::clone(t.val.as_ref().unwrap()), args),
-                                        Some(Rc::clone(&t)),
-                                    ));
+                                    return Ok(Expr::FuncCall(t.val.unwrap(), args));
                                 }
                                 TokenKind::Comma => {
                                     self.pop()?;
@@ -633,7 +539,7 @@ impl Parser {
                             }
                         }
                     }
-                    _ => Expr::Identifier(Rc::clone(t.val.as_ref().unwrap())),
+                    _ => Expr::Identifier(t.val.unwrap()),
                 },
                 TokenKind::Minus
                 | TokenKind::Bang
@@ -651,15 +557,10 @@ impl Parser {
                 TokenKind::LParen => {
                     let expr = self.expr(0)?;
                     self.assert(TokenKind::RParen)?;
-                    match expr.node {
-                        ASTType::Expr(e) => e,
-                        _ => unreachable!(),
-                    }
+                    expr
                 }
                 _ => return Err(Error::new(t.loc, ErrorKind::ExpectedExpr(t))),
-            },
-            Some(Rc::clone(&t)),
-        );
+            };
 
         loop {
             let t = self.pop()?;
@@ -692,29 +593,23 @@ impl Parser {
 
             let right = self.expr(op.precedence().1)?;
             if op == BinOp::Assign {
-                if let ASTType::Expr(Expr::Identifier(l)) = &left.node {
-                    let s = match l.as_ref() {
+                if let Expr::Identifier(l) = left {
+                    let s = match l {
                         Literal::Identifier(i) => i,
                         _ => unreachable!(),
                     };
                     if matches!(s.as_str(), "Buffer" | "FBuffer" | "Array" | "FlagArray") {
-                        left = ASTNode::expr(
-                            Expr::ArrayAssign(Rc::clone(l), Box::new(right)),
-                            Some(Rc::clone(&t)),
-                        );
+                        left = Expr::ArrayAssign(l, Box::new(right));
                         continue;
                     }
                 }
             }
-            left = ASTNode::expr(
-                Expr::BinOp(op, Box::new(left), Box::new(right)),
-                Some(Rc::clone(&t)),
-            );
+            left = Expr::BinOp(op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn pop(&mut self) -> Result<Rc<Token>, Error> {
+    fn pop(&mut self) -> Result<Token, Error> {
         Ok(match self.tokens.pop() {
             Some(x) => x,
             None => {
@@ -734,7 +629,7 @@ impl Parser {
         Ok(kind)
     }
 
-    fn consume(&mut self, kind: TokenKind) -> Result<Rc<Token>, Error> {
+    fn consume(&mut self, kind: TokenKind) -> Result<Token, Error> {
         let t = self.pop()?;
         if t.kind == kind {
             return Ok(t);

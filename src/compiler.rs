@@ -1,10 +1,11 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use num_enum::TryFromPrimitive;
 
 use crate::lexer::Literal;
-use crate::parser::{ASTNode, BinOp, Expr, Stmt, UnOp};
+use crate::parser::{BinOp, Expr, Stmt, UnOp};
 
 #[derive(TryFromPrimitive)]
 #[repr(u8)]
@@ -237,7 +238,7 @@ impl<'a> Compiler<'a> {
         self.syms.extend(syms)
     }
 
-    pub fn compile(&mut self, stmts: &'a Vec<ASTNode>) -> Vec<u32> {
+    pub fn compile(&mut self, stmts: &'a Vec<Stmt>) -> Vec<u32> {
         for s in stmts {
             self.compile_stmt(s);
         }
@@ -250,7 +251,7 @@ impl<'a> Compiler<'a> {
         std::mem::take(&mut self.code)
     }
 
-    fn compile_stmt(&mut self, stmt: &'a ASTNode) {
+    fn compile_stmt(&mut self, stmt: &'a Stmt) {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -258,9 +259,9 @@ impl<'a> Compiler<'a> {
             }};
         }
 
-        match stmt.get_stmt() {
+        match stmt {
             Stmt::Script(l, s) => {
-                let l = match l.as_ref() {
+                let l = match l {
                     Literal::Identifier(i) => i,
                     _ => panic!(),
                 };
@@ -278,7 +279,7 @@ impl<'a> Compiler<'a> {
                 add_op!(Return);
             }
             Stmt::Label(n) => {
-                let lbl = match n.as_ref() {
+                let lbl = match n {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
@@ -288,7 +289,7 @@ impl<'a> Compiler<'a> {
                 self.num_labels += 1;
             }
             Stmt::Goto(n) => {
-                let lbl = match n.as_ref() {
+                let lbl = match n {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
@@ -316,12 +317,12 @@ impl<'a> Compiler<'a> {
                 add_op!(EndIf);
             }
             Stmt::If(e, s) => {
-                match e.get_expr() {
+                match e {
                     Expr::BinOp(_, _, _) => self.compile_expr(e),
                     Expr::UnOp(UnOp::Bang, e) => {
                         let start = self.code.len();
                         self.compile_expr(e);
-                        self.code[start] = match Op::try_from(self.code[start] as u8).unwrap() {
+                        self.code[start] = match Op::try_from(self.code[start]).unwrap() {
                             Op::IfEq => Op::IfNe,
                             Op::IfNe => Op::IfEq,
                             Op::IfLt => Op::IfGe,
@@ -347,7 +348,7 @@ impl<'a> Compiler<'a> {
                 self.compile_stmt(s);
             }
             Stmt::Switch(e, s) => {
-                match e.get_expr() {
+                match e {
                     Expr::Array(_, _) => add_op!(Switch),
                     Expr::Identifier(_) => add_op!(SwitchConst),
                     _ => panic!(),
@@ -357,7 +358,7 @@ impl<'a> Compiler<'a> {
                 add_op!(EndSwitch);
             }
             Stmt::Case(e, s) => {
-                match e.get_expr() {
+                match e {
                     Expr::UnOp(op, e) => {
                         match op {
                             UnOp::Equal => add_op!(CaseEq),
@@ -425,7 +426,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_expr(&mut self, expr: &'a ASTNode) {
+    fn compile_expr(&mut self, expr: &'a Expr) {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -433,7 +434,7 @@ impl<'a> Compiler<'a> {
             }};
         }
 
-        match expr.get_expr() {
+        match expr {
             Expr::Identifier(lit) => match lit.borrow() {
                 Literal::Number(n) => self.code.push(n.as_u32()),
                 Literal::Identifier(i) => {
@@ -445,7 +446,8 @@ impl<'a> Compiler<'a> {
                 }
                 Literal::Boolean(b) => self.code.push(if *b { 1 } else { 0 }),
             },
-            Expr::UnOp(op, expr) => {
+            Expr::UnOp(_op, _expr) => {
+                panic!("idk why this code is here i dont think its reachable lmao");
                 /*
                 let e = self.compile_expr(expr);
                 assert_eq!(e.len(), 1);
@@ -453,7 +455,7 @@ impl<'a> Compiler<'a> {
                     UnOp::Minus => self.code.push(*e.first().unwrap() as i32 as u32),
                     _ => todo!(),
                 }
-                */ // TODO: what is this doing
+                */
             }
             Expr::BinOp(op, l, r) => match op {
                 BinOp::BitAnd => {
@@ -467,7 +469,7 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(r);
                 }
                 BinOp::PlusEq => {
-                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
+                    if let Some(Literal::Number(n)) = r.get_literal() {
                         if n.is_float() {
                             add_op!(AddF)
                         } else {
@@ -480,7 +482,7 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(r);
                 }
                 BinOp::MinusEq => {
-                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
+                    if let Some(Literal::Number(n)) = r.get_literal() {
                         if n.is_float() {
                             add_op!(SubF)
                         } else {
@@ -493,7 +495,7 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(r);
                 }
                 BinOp::StarEq => {
-                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
+                    if let Some(Literal::Number(n)) = r.get_literal() {
                         if n.is_float() {
                             add_op!(MulF)
                         } else {
@@ -506,7 +508,7 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(r);
                 }
                 BinOp::DivEq => {
-                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
+                    if let Some(Literal::Number(n)) = r.get_literal() {
                         if n.is_float() {
                             add_op!(DivF)
                         } else {
@@ -524,7 +526,7 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(r);
                 }
                 BinOp::AndEq => {
-                    match r.get_expr() {
+                    match r.deref() {
                         Expr::Array(_, _) => add_op!(BitwiseAnd),
                         Expr::Identifier(l) if matches!(l.borrow(), Literal::Number(_)) => {
                             add_op!(BitwiseAndConst)
@@ -535,7 +537,7 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(r);
                 }
                 BinOp::OrEq => {
-                    match r.get_expr() {
+                    match r.deref() {
                         Expr::Array(_, _) => add_op!(BitwiseOr),
                         Expr::Identifier(l) if matches!(l.borrow(), Literal::Number(_)) => {
                             add_op!(BitwiseOrConst)
@@ -545,7 +547,7 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(l);
                     self.compile_expr(r);
                 }
-                BinOp::Assign => match r.get_expr() {
+                BinOp::Assign => match r.deref() {
                     Expr::Identifier(lit) if matches!(lit.borrow(), Literal::Number(_)) => {
                         if let Literal::Number(n) = lit.borrow() {
                             if n.is_float() {
@@ -638,7 +640,7 @@ impl<'a> Compiler<'a> {
                         if num_vars == 0 {
                             break;
                         };
-                        let op = match r.get_expr().get_literal() {
+                        let op = match r.get_literal() {
                             Some(Literal::Identifier(s)) if s == "Buffer" => Op::BufRead1 as usize,
                             Some(Literal::Identifier(s)) if s == "FBuffer" => {
                                 Op::FBufRead1 as usize
@@ -668,7 +670,7 @@ impl<'a> Compiler<'a> {
                     _ => unreachable!(),
                 };
 
-                let index = match index.get_expr().get_literal() {
+                let index = match index.get_literal() {
                     Some(Literal::Number(n)) => n.as_u32(),
                     _ => unreachable!(),
                 };

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::{
     error::{Error, ErrorKind},
     lexer::Literal,
-    parser::{ASTNode, BinOp, Expr, Stmt, UnOp},
+    parser::{BinOp, Expr, Stmt, UnOp},
 };
 
 #[derive(Debug, PartialEq)]
@@ -45,21 +45,21 @@ impl SemChecker<'_> {
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn check_ast(&mut self, ast: &'a Vec<ASTNode>) -> Result<(), Error> {
+    pub fn check_ast(&mut self, ast: &'a Vec<Stmt>) -> Result<(), Error> {
         self.check_nodes(ast)?;
         self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts);
         Ok(())
     }
 
-    fn check_nodes(&mut self, stmts: &'a Vec<ASTNode>) -> Result<(), Error> {
+    fn check_nodes(&mut self, stmts: &'a Vec<Stmt>) -> Result<(), Error> {
         for stmt in stmts {
             self.check_stmt_node(stmt)?;
         }
         Ok(())
     }
 
-    fn check_stmt_node(&mut self, stmt: &'a ASTNode) -> Result<(), Error> {
-        match stmt.get_stmt() {
+    fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), Error> {
+        match stmt {
             Stmt::Script(i, s) => {
                 self.declared_labels.clear();
                 self.referenced_labels.clear();
@@ -85,7 +85,7 @@ impl<'a> SemChecker<'a> {
                     ErrorKind::RedeclaredLabel(Rc::clone(stmt.get_token().as_ref().unwrap())),
                 ))?,
             ),
-            Stmt::Goto(l) => match l.as_ref() {
+            Stmt::Goto(l) => match l {
                 Literal::Identifier(i) => {
                     if !self.referenced_labels.contains(&i) {
                         self.referenced_labels.push(i);
@@ -117,7 +117,7 @@ impl<'a> SemChecker<'a> {
                     self.check_stmt_node(e)?;
                 }
             }
-            Stmt::Jump(l) => match l.as_ref() {
+            Stmt::Jump(l) => match l {
                 Literal::Identifier(i) => {
                     if !self.referenced_scripts.contains(&i) {
                         self.referenced_scripts.push(i);
@@ -147,9 +147,9 @@ impl<'a> SemChecker<'a> {
         Ok(())
     }
 
-    fn check_expr_node(&self, expr: &ASTNode) -> Type {
-        match expr.get_expr() {
-            Expr::Identifier(l) => match l.as_ref() {
+    fn check_expr_node(&self, expr: &Expr) -> Type {
+        match expr {
+            Expr::Identifier(l) => match l {
                 Literal::Identifier(_) => Type::Identifier,
                 Literal::Number(n) => {
                     if n.is_float() {
@@ -180,7 +180,7 @@ impl<'a> SemChecker<'a> {
         }
     }
 
-    fn check_unop_type(&self, op: &UnOp, expr: &ASTNode) -> Type {
+    fn check_unop_type(&self, op: &UnOp, expr: &Expr) -> Type {
         let t = self.check_expr_node(expr);
         match op {
             UnOp::Minus => {
@@ -207,7 +207,7 @@ impl<'a> SemChecker<'a> {
         }
     }
 
-    fn check_binop_type(&self, op: &BinOp, lhs: &ASTNode, rhs: &ASTNode) -> Type {
+    fn check_binop_type(&self, op: &BinOp, lhs: &Expr, rhs: &Expr) -> Type {
         let l_type = self.check_expr_node(lhs);
         let r_type = self.check_expr_node(rhs);
         match op {

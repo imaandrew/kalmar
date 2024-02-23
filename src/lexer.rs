@@ -14,7 +14,7 @@ use strum_macros::EnumString;
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub val: Option<Rc<Literal>>,
+    pub val: Option<Literal>,
     pub loc: (usize, usize),
 }
 
@@ -382,7 +382,7 @@ impl Lexer {
         Token {
             kind,
             loc: (self.line, self.col),
-            val: literal.map(Rc::new),
+            val: literal,
         }
     }
 }
