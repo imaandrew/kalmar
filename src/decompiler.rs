@@ -53,7 +53,6 @@ pub fn decompile_script(code: &[u8]) -> Result<Stmt, ()> {
     let mut block = vec![];
 
     while Op::try_from_primitive(c.peek().unwrap()).unwrap() != Op::End {
-        println!("ayy");
         let s = match decompile_inst(&mut c) {
             Ok(e) => e,
             Err(_) => break,
@@ -550,7 +549,7 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
 
 fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, ()> {
     let mut if_block = vec![];
-    let mut else_blocks = vec![];
+    let mut else_stmt = None;
 
     loop {
         let next_op = Op::try_from_primitive(c.peek().unwrap()).unwrap();
@@ -560,13 +559,35 @@ fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, ()> {
                 break;
             }
             Op::Else => {
-                //TODO: else if blocks
                 c.seek(8);
+
+                if matches!(
+                    Op::try_from_primitive(c.peek().unwrap()).unwrap(),
+                    Op::IfEq
+                        | Op::IfNe
+                        | Op::IfGt
+                        | Op::IfGe
+                        | Op::IfLt
+                        | Op::IfLe
+                        | Op::IfFlag
+                        | Op::IfNotFlag
+                ) {
+                    else_stmt = Some(Box::new(Stmt::Else(
+                        Some(Box::new(decompile_inst(c)?)),
+                        None,
+                    )));
+                    continue;
+                }
+
                 let mut block = vec![];
                 while Op::try_from_primitive(c.peek().unwrap()).unwrap() != Op::EndIf {
                     block.push(decompile_inst(c)?);
                 }
-                else_blocks.push(Stmt::Else(None, Some(Box::new(Stmt::Block(block)))));
+
+                else_stmt = Some(Box::new(Stmt::Else(
+                    None,
+                    Some(Box::new(Stmt::Block(block))),
+                )));
                 c.seek(8);
                 break;
             }
@@ -583,7 +604,7 @@ fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, ()> {
 
     let if_stmt = Stmt::If(expr, Box::new(Stmt::Block(if_block)));
 
-    Ok(Stmt::IfElse(Box::new(if_stmt), else_blocks))
+    Ok(Stmt::IfElse(Box::new(if_stmt), else_stmt))
 }
 
 fn decompile_expr(c: &mut Cur<&[u8]>) -> Result<Expr, ()> {

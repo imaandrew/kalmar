@@ -105,7 +105,9 @@ impl<'a> SemChecker<'a> {
             }
             Stmt::IfElse(i, e) => {
                 self.check_stmt_node(i)?;
-                self.check_nodes(e)?;
+                if let Some(e) = e {
+                    self.check_stmt_node(e)?;
+                }
             }
             Stmt::If(e, s) => {
                 assert_eq!(self.check_expr_node(e), Type::Boolean);

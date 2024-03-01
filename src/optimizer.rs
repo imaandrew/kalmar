@@ -22,7 +22,9 @@ fn collapse_stmt(stmt: &mut Stmt) {
         }
         Stmt::IfElse(i, e) => {
             collapse_stmt(i);
-            optimize_stmts(e);
+            if let Some(e) = e {
+                collapse_stmt(e);
+            }
 
             //try_elim_if_else_stmt(stmt);
         }
@@ -71,6 +73,7 @@ fn try_elim_if_else_stmt(stmt: &mut Stmt) {
         return;
     }
 
+    /*
     for stmt in e {
         match stmt {
             Stmt::Else(Some(s), _) => {
@@ -85,6 +88,7 @@ fn try_elim_if_else_stmt(stmt: &mut Stmt) {
             _ => unreachable!(),
         }
     }
+    */
 
     *stmt = Stmt::Empty;
 }

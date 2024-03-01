@@ -310,8 +310,9 @@ impl<'a> Compiler<'a> {
             }
             Stmt::IfElse(i, e) => {
                 self.compile_stmt(i);
-                for expr in e {
-                    self.compile_stmt(expr);
+
+                if let Some(e) = e {
+                    self.compile_stmt(e);
                 }
                 add_op!(EndIf);
             }
@@ -339,7 +340,7 @@ impl<'a> Compiler<'a> {
             }
             Stmt::Else(Some(i), None) => {
                 add_op!(Else);
-                self.compile_stmt(i)
+                self.compile_stmt(i);
             }
             Stmt::Else(None, Some(s)) => {
                 add_op!(Else);

@@ -15,7 +15,7 @@ pub enum Stmt {
     Label(Literal),
     Goto(Literal),
     Loop(Option<Expr>, Box<Self>),
-    IfElse(Box<Self>, Vec<Self>),
+    IfElse(Box<Self>, Option<Box<Self>>),
     If(Expr, Box<Self>),
     Else(Option<Box<Stmt>>, Option<Box<Stmt>>),
     Jump(Literal),
@@ -449,15 +449,15 @@ impl Parser {
     fn if_else_statement(&mut self) -> Result<Stmt, ()> {
         let if_stmt = self.if_statement()?;
 
-        let mut else_stmts = vec![];
-
-        while self.peek_over_newlines(TokenKind::KwElse)? {
+        let else_stmt = if self.peek_over_newlines(TokenKind::KwElse)? {
             self.skip_newlines()?;
             self.assert(TokenKind::KwElse)?;
-            else_stmts.push(self.else_statement()?);
-        }
+            Some(Box::new(self.else_statement()?))
+        } else {
+            None
+        };
 
-        Ok(Stmt::IfElse(Box::new(if_stmt), else_stmts))
+        Ok(Stmt::IfElse(Box::new(if_stmt), else_stmt))
     }
 
     fn if_statement(&mut self) -> Result<Stmt, ()> {
@@ -469,7 +469,7 @@ impl Parser {
     fn else_statement(&mut self) -> Result<Stmt, ()> {
         Ok(if self.peek(TokenKind::KwIf)? {
             self.assert(TokenKind::KwIf)?;
-            let if_stmt = self.if_statement()?;
+            let if_stmt = self.if_else_statement()?;
             Stmt::Else(Some(Box::new(if_stmt)), None)
         } else {
             let else_block = self.block(Self::statement, true)?;
