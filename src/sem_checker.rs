@@ -89,7 +89,7 @@ impl<'a> SemChecker<'a> {
                     ErrorKind::RedeclaredLabel(Rc::clone(stmt.get_token().as_ref().unwrap())),
                 ))?,
                 */
-                .ok_or(())?
+                .ok_or(())?,
             ),
             Stmt::Goto(l) => match l {
                 Literal::Identifier(i) => {

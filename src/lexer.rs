@@ -301,7 +301,7 @@ impl Lexer {
                 ErrorKind::UnexpectedChar(c),
             )),
             */
-            _ => panic!()
+            _ => panic!(),
         }
     }
 

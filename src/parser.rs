@@ -415,7 +415,7 @@ impl Parser {
                 Ok(Stmt::Expr(self.expr(0)?))
             }
             //_ => Err(Error::new(t.loc, ErrorKind::ExpectedStmt(Rc::clone(&t)))),
-            _ => panic!()
+            _ => panic!(),
         }?;
 
         Ok(s)
@@ -504,7 +504,7 @@ impl Parser {
             TokenKind::KwDefault => {
                 self.pop()?;
                 Expr::Default
-            },
+            }
             _ => self.expr(0)?,
         };
         let block = self.block(Self::statement, true)?;
@@ -515,57 +515,54 @@ impl Parser {
     fn expr(&mut self, min_prec: u8) -> Result<Expr, ()> {
         let t = self.pop()?;
         let mut left = match t.kind {
-                TokenKind::Number | TokenKind::Boolean => {
-                    Expr::Identifier(t.val.unwrap())
-                }
-                TokenKind::Identifier => match self.kind()? {
-                    TokenKind::LBracket => {
-                        self.pop()?;
-                        let idx = self.expr(0)?;
-                        self.assert(TokenKind::RBracket)?;
-                        Expr::Array(t.val.unwrap(), Box::new(idx))
-                    }
-                    TokenKind::LParen => {
-                        self.pop()?;
-                        let mut args = vec![];
-                        self.parsing_func_args = true;
-                        loop {
-                            match self.kind()? {
-                                TokenKind::RParen => {
-                                    self.pop()?;
-                                    self.parsing_func_args = false;
-                                    return Ok(Expr::FuncCall(t.val.unwrap(), args));
-                                }
-                                TokenKind::Comma => {
-                                    self.pop()?;
-                                }
-                                _ => args.push(self.expr(0)?),
-                            }
-                        }
-                    }
-                    _ => Expr::Identifier(t.val.unwrap()),
-                },
-                TokenKind::Minus
-                | TokenKind::Bang
-                | TokenKind::EqEq
-                | TokenKind::BangEq
-                | TokenKind::Greater
-                | TokenKind::GreaterEq
-                | TokenKind::Less
-                | TokenKind::LessEq
-                | TokenKind::And => {
-                    let op = UnOp::try_from(t.kind).unwrap();
-                    let r = self.expr(op.precedence().1)?;
-                    Expr::UnOp(op, Box::new(r))
+            TokenKind::Number | TokenKind::Boolean => Expr::Identifier(t.val.unwrap()),
+            TokenKind::Identifier => match self.kind()? {
+                TokenKind::LBracket => {
+                    self.pop()?;
+                    let idx = self.expr(0)?;
+                    self.assert(TokenKind::RBracket)?;
+                    Expr::Array(t.val.unwrap(), Box::new(idx))
                 }
                 TokenKind::LParen => {
-                    let expr = self.expr(0)?;
-                    self.assert(TokenKind::RParen)?;
-                    expr
+                    self.pop()?;
+                    let mut args = vec![];
+                    self.parsing_func_args = true;
+                    loop {
+                        match self.kind()? {
+                            TokenKind::RParen => {
+                                self.pop()?;
+                                self.parsing_func_args = false;
+                                return Ok(Expr::FuncCall(t.val.unwrap(), args));
+                            }
+                            TokenKind::Comma => {
+                                self.pop()?;
+                            }
+                            _ => args.push(self.expr(0)?),
+                        }
+                    }
                 }
-                _ => panic!()
-                //_ => return Err(Error::new(t.loc, ErrorKind::ExpectedExpr(t))),
-            };
+                _ => Expr::Identifier(t.val.unwrap()),
+            },
+            TokenKind::Minus
+            | TokenKind::Bang
+            | TokenKind::EqEq
+            | TokenKind::BangEq
+            | TokenKind::Greater
+            | TokenKind::GreaterEq
+            | TokenKind::Less
+            | TokenKind::LessEq
+            | TokenKind::And => {
+                let op = UnOp::try_from(t.kind).unwrap();
+                let r = self.expr(op.precedence().1)?;
+                Expr::UnOp(op, Box::new(r))
+            }
+            TokenKind::LParen => {
+                let expr = self.expr(0)?;
+                self.assert(TokenKind::RParen)?;
+                expr
+            }
+            _ => panic!(), //_ => return Err(Error::new(t.loc, ErrorKind::ExpectedExpr(t))),
+        };
 
         loop {
             let t = self.pop()?;
