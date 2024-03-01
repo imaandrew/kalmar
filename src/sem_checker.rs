@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::{
     //error::{Error, ErrorKind},
     lexer::Literal,

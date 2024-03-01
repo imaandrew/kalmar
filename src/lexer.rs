@@ -1,7 +1,6 @@
 use std::{
     fmt::Display,
     ops::{Add, BitAnd, Div, Mul, Neg, Rem, Sub},
-    rc::Rc,
     str::FromStr,
 };
 

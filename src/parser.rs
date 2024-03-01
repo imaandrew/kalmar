@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, fmt::Display, rc::Rc};
+use std::fmt::Display;
 
 use crate::{
     //error::{Error, ErrorKind},
@@ -301,7 +301,7 @@ pub enum Expr {
 impl Expr {
     pub fn get_literal(&self) -> Option<&Literal> {
         match &self {
-            Self::Identifier(l) => Some(l.borrow()),
+            Self::Identifier(l) => Some(l),
             _ => None,
         }
     }
@@ -375,7 +375,7 @@ impl Parser {
     where
         F: Fn(&mut Self) -> Result<Stmt, ()>,
     {
-        let t = self.consume(TokenKind::LBrace)?;
+        self.consume(TokenKind::LBrace)?;
         self.assert(TokenKind::Newline)?;
         self.skip_newlines()?;
         let mut stmts = vec![];
@@ -617,7 +617,7 @@ impl Parser {
                 if self.verbose {
                     println!("{:?}", x);
                 }
-                x.into()
+                x
             }
         })
     }
