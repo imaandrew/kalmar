@@ -1,4 +1,5 @@
 mod compiler;
+mod decompiler;
 //mod error;
 mod lexer;
 mod optimizer;
@@ -91,13 +92,18 @@ fn main() -> Result<(), Box<dyn serror::Error>> {
     compiler.add_syms(parse_syms(&syms).unwrap());
     let code = compiler.compile(&stmts);
 
-    if let Some(o) = cli.output {
+    if let Some(o) = &cli.output {
         let o = File::create(o)?;
         let mut o = BufWriter::new(o);
         for i in &code {
             o.write_all(&i.to_be_bytes())?;
         }
     }
+
+    let r = std::fs::read(cli.output.unwrap())?;
+    let s = decompiler::decompile_script(&r).unwrap();
+
+    println!("{}", s);
 
     Ok(())
 }

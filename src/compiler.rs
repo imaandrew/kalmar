@@ -7,9 +7,9 @@ use num_enum::TryFromPrimitive;
 use crate::lexer::Literal;
 use crate::parser::{BinOp, Expr, Stmt, UnOp};
 
-#[derive(TryFromPrimitive)]
-#[repr(u8)]
-enum Op {
+#[derive(TryFromPrimitive, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum Op {
     InternalFetch,
     End,
     Return,
@@ -108,8 +108,8 @@ enum Op {
 }
 
 impl Op {
-    fn get_arg_count(&self) -> u32 {
-        match self {
+    pub fn get_arg_count(&self) -> Option<u32> {
+        Some(match self {
             Self::End
             | Self::Return
             | Self::EndLoop
@@ -203,7 +203,7 @@ impl Op {
             | Self::Op93
             | Self::Op94
             | Self::Call => return None,
-        }
+        })
     }
 }
 
