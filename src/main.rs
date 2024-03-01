@@ -1,5 +1,5 @@
 mod compiler;
-mod error;
+//mod error;
 mod lexer;
 mod optimizer;
 mod parser;
@@ -13,7 +13,7 @@ use std::{
     path::PathBuf,
 };
 
-use error::Error;
+//use error::Error;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -35,7 +35,7 @@ struct Cli {
     print_ast: bool,
 }
 
-fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, Error> {
+fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, ()> {
     let mut v = vec![];
     for line in s.lines() {
         let mut l = line.split('=');
@@ -59,27 +59,27 @@ fn main() -> Result<(), Box<dyn serror::Error>> {
     let cli = Cli::parse();
     let data: String = fs::read_to_string(cli.input)?.parse()?;
     let mut parser = parser::Parser::new(&data);
-    let printer = error::ContextPrinter::new(&data);
+    //let printer = error::ContextPrinter::new(&data);
 
     let mut stmts = match parser.parse(false) {
         Ok(s) => s,
         Err(e) => {
-            printer.print(&e)?;
+            //printer.print(&e)?;
             std::process::exit(1);
         }
     };
 
     let mut sem = sem_checker::SemChecker::default();
     if let Err(e) = sem.check_ast(&stmts) {
-        printer.print(&e)?;
+        //printer.print(&e)?;
         std::process::exit(1);
     }
 
-    optimizer::optimize_ast(&mut stmts);
+    optimizer::optimize_stmts(&mut stmts);
 
     if cli.print_ast {
         for s in &stmts {
-            println!("{}", s);
+            println!("{:#?}", s);
         }
     }
 

@@ -202,7 +202,7 @@ impl Op {
             | Self::Op92
             | Self::Op93
             | Self::Op94
-            | Self::Call => unreachable!(),
+            | Self::Call => return None,
         }
     }
 }
@@ -255,7 +255,7 @@ impl<'a> Compiler<'a> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
-                self.code.push(Op::$op.get_arg_count());
+                self.code.push(Op::$op.get_arg_count().unwrap());
             }};
         }
 
@@ -333,7 +333,6 @@ impl<'a> Compiler<'a> {
                             Op::IfNotFlag => Op::IfFlag,
                             _ => unreachable!(),
                         } as u32;
-                        self.code.push(2);
                     }
                     p => panic!("{:?}", p),
                 }
@@ -416,7 +415,7 @@ impl<'a> Compiler<'a> {
             }
             Stmt::Jump(i) => {
                 add_op!(Jump);
-                self.code.push(match i.borrow() {
+                self.code.push(match i {
                     Literal::Number(n) => n.as_u32(),
                     _ => todo!(),
                 });
@@ -430,12 +429,12 @@ impl<'a> Compiler<'a> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
-                self.code.push(Op::$op.get_arg_count());
+                self.code.push(Op::$op.get_arg_count().unwrap());
             }};
         }
 
         match expr {
-            Expr::Identifier(lit) => match lit.borrow() {
+            Expr::Identifier(lit) => match lit {
                 Literal::Number(n) => self.code.push(n.as_u32()),
                 Literal::Identifier(i) => {
                     self.code
@@ -528,7 +527,7 @@ impl<'a> Compiler<'a> {
                 BinOp::AndEq => {
                     match r.deref() {
                         Expr::Array(_, _) => add_op!(BitwiseAnd),
-                        Expr::Identifier(l) if matches!(l.borrow(), Literal::Number(_)) => {
+                        Expr::Identifier(Literal::Number(_)) => {
                             add_op!(BitwiseAndConst)
                         }
                         _ => unreachable!(),
@@ -539,7 +538,7 @@ impl<'a> Compiler<'a> {
                 BinOp::OrEq => {
                     match r.deref() {
                         Expr::Array(_, _) => add_op!(BitwiseOr),
-                        Expr::Identifier(l) if matches!(l.borrow(), Literal::Number(_)) => {
+                        Expr::Identifier(Literal::Number(_)) => {
                             add_op!(BitwiseOrConst)
                         }
                         _ => unreachable!(),
@@ -548,8 +547,8 @@ impl<'a> Compiler<'a> {
                     self.compile_expr(r);
                 }
                 BinOp::Assign => match r.deref() {
-                    Expr::Identifier(lit) if matches!(lit.borrow(), Literal::Number(_)) => {
-                        if let Literal::Number(n) = lit.borrow() {
+                    Expr::Identifier(lit) if matches!(lit, Literal::Number(_)) => {
+                        if let Literal::Number(n) = lit {
                             if n.is_float() {
                                 add_op!(SetF);
                             } else {
@@ -559,8 +558,8 @@ impl<'a> Compiler<'a> {
                             self.compile_expr(r);
                         }
                     }
-                    Expr::Identifier(i) if matches!(i.borrow(), Literal::Identifier(_)) => {
-                        if let Literal::Identifier(i) = i.borrow() {
+                    Expr::Identifier(i) if matches!(i, Literal::Identifier(_)) => {
+                        if let Literal::Identifier(i) = i {
                             match i.as_str() {
                                 "Buffer" => add_op!(BufPeek),
                                 "FBuffer" => add_op!(FBufPeek),
@@ -579,8 +578,8 @@ impl<'a> Compiler<'a> {
                         self.compile_expr(l);
                         self.compile_expr(r);
                     }
-                    Expr::FuncCall(i, a) if matches!(i.borrow(), Literal::Identifier(_)) => {
-                        if let Literal::Identifier(s) = i.borrow() {
+                    Expr::FuncCall(i, a) if matches!(i, Literal::Identifier(_)) => {
+                        if let Literal::Identifier(s) = i {
                             let f = self.get_func(s, true).unwrap();
                             self.code.push(f.0);
                             self.code.push(f.1 as u32);
@@ -665,7 +664,7 @@ impl<'a> Compiler<'a> {
                 }
             },
             Expr::Array(ident, index) => {
-                let ident = match ident.borrow() {
+                let ident = match ident {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
@@ -678,7 +677,7 @@ impl<'a> Compiler<'a> {
                 self.code.push(get_var(ident, index));
             }
             Expr::FuncCall(func, args) => {
-                let addr = match func.borrow() {
+                let addr = match func {
                     Literal::Identifier(i) => self
                         .get_func(i, false)
                         .unwrap_or_else(|| panic!("Missing function: {}", i)),
@@ -700,7 +699,7 @@ impl<'a> Compiler<'a> {
                 }
             }
             Expr::ArrayAssign(ident, expr) => {
-                let ident = match ident.borrow() {
+                let ident = match ident {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
@@ -752,7 +751,7 @@ impl<'a> Compiler<'a> {
 
         match op {
             Some(op) => {
-                let a = op.get_arg_count();
+                let a = op.get_arg_count().unwrap();
                 Some((op as u32, a as i32))
             }
             None => self.syms.get(func).copied().map(|x| (x, -1)),

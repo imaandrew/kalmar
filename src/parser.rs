@@ -1,7 +1,7 @@
 use std::{borrow::Borrow, fmt::Display, rc::Rc};
 
 use crate::{
-    error::{Error, ErrorKind},
+    //error::{Error, ErrorKind},
     lexer::{Lexer, Literal, Token, TokenKind},
 };
 
@@ -344,7 +344,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self, verbose: bool) -> Result<Vec<Stmt>, Error> {
+    pub fn parse(&mut self, verbose: bool) -> Result<Vec<Stmt>, ()> {
         let mut stmts = vec![];
         self.verbose = verbose;
         self.skip_newlines()?;
@@ -362,7 +362,7 @@ impl Parser {
         Ok(stmts)
     }
 
-    fn declaration(&mut self) -> Result<Stmt, Error> {
+    fn declaration(&mut self) -> Result<Stmt, ()> {
         self.assert(TokenKind::KwScr)?;
         let ident = self.consume(TokenKind::Identifier)?;
         Ok(Stmt::Script(
@@ -371,9 +371,9 @@ impl Parser {
         ))
     }
 
-    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Result<Stmt, Error>
+    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Result<Stmt, ()>
     where
-        F: Fn(&mut Self) -> Result<Stmt, Error>,
+        F: Fn(&mut Self) -> Result<Stmt, ()>,
     {
         let t = self.consume(TokenKind::LBrace)?;
         self.assert(TokenKind::Newline)?;
@@ -393,7 +393,7 @@ impl Parser {
         Ok(Stmt::Block(stmts))
     }
 
-    fn statement(&mut self) -> Result<Stmt, Error> {
+    fn statement(&mut self) -> Result<Stmt, ()> {
         let t = self.pop()?;
         let s = match t.kind {
             TokenKind::KwReturn => Ok(Stmt::Return),
@@ -414,26 +414,27 @@ impl Parser {
                 self.tokens.push(t);
                 Ok(Stmt::Expr(self.expr(0)?))
             }
-            _ => Err(Error::new(t.loc, ErrorKind::ExpectedStmt(Rc::clone(&t)))),
+            //_ => Err(Error::new(t.loc, ErrorKind::ExpectedStmt(Rc::clone(&t)))),
+            _ => panic!()
         }?;
 
         Ok(s)
     }
 
-    fn goto_statement(&mut self) -> Result<Stmt, Error> {
+    fn goto_statement(&mut self) -> Result<Stmt, ()> {
         let ident = self.consume(TokenKind::Identifier)?;
 
         Ok(Stmt::Goto(ident.val.unwrap()))
     }
 
-    fn label_statement(&mut self) -> Result<Stmt, Error> {
+    fn label_statement(&mut self) -> Result<Stmt, ()> {
         let ident = self.consume(TokenKind::Identifier)?;
         self.assert(TokenKind::Colon)?;
 
         Ok(Stmt::Label(ident.val.unwrap()))
     }
 
-    fn loop_statement(&mut self) -> Result<Stmt, Error> {
+    fn loop_statement(&mut self) -> Result<Stmt, ()> {
         let loop_count = if self.peek(TokenKind::LBrace)? {
             None
         } else {
@@ -445,7 +446,7 @@ impl Parser {
         Ok(Stmt::Loop(loop_count, Box::new(block)))
     }
 
-    fn if_else_statement(&mut self) -> Result<Stmt, Error> {
+    fn if_else_statement(&mut self) -> Result<Stmt, ()> {
         let if_stmt = self.if_statement()?;
 
         let mut else_stmts = vec![];
@@ -459,13 +460,13 @@ impl Parser {
         Ok(Stmt::IfElse(Box::new(if_stmt), else_stmts))
     }
 
-    fn if_statement(&mut self) -> Result<Stmt, Error> {
+    fn if_statement(&mut self) -> Result<Stmt, ()> {
         let if_expr = self.expr(0)?;
         let if_block = self.block(Self::statement, true)?;
         Ok(Stmt::If(if_expr, Box::new(if_block)))
     }
 
-    fn else_statement(&mut self) -> Result<Stmt, Error> {
+    fn else_statement(&mut self) -> Result<Stmt, ()> {
         Ok(if self.peek(TokenKind::KwIf)? {
             self.assert(TokenKind::KwIf)?;
             let if_stmt = self.if_statement()?;
@@ -476,31 +477,34 @@ impl Parser {
         })
     }
 
-    fn jump_statement(&mut self) -> Result<Stmt, Error> {
+    fn jump_statement(&mut self) -> Result<Stmt, ()> {
         let ident = self.consume(TokenKind::Identifier)?;
         Ok(Stmt::Jump(ident.val.unwrap()))
     }
 
-    fn thread_statement(&mut self) -> Result<Stmt, Error> {
+    fn thread_statement(&mut self) -> Result<Stmt, ()> {
         Ok(Stmt::Thread(Box::new(self.block(Self::statement, true)?)))
     }
 
-    fn child_thread_statement(&mut self) -> Result<Stmt, Error> {
+    fn child_thread_statement(&mut self) -> Result<Stmt, ()> {
         Ok(Stmt::ChildThread(Box::new(
             self.block(Self::statement, true)?,
         )))
     }
 
-    fn switch_statement(&mut self) -> Result<Stmt, Error> {
+    fn switch_statement(&mut self) -> Result<Stmt, ()> {
         let val = self.expr(0)?;
         let block = self.block(Self::case_statement, false)?;
 
         Ok(Stmt::Switch(val, Box::new(block)))
     }
 
-    fn case_statement(&mut self) -> Result<Stmt, Error> {
+    fn case_statement(&mut self) -> Result<Stmt, ()> {
         let case = match self.kind()? {
-            TokenKind::KwDefault => Expr::Default,
+            TokenKind::KwDefault => {
+                self.pop()?;
+                Expr::Default
+            },
             _ => self.expr(0)?,
         };
         let block = self.block(Self::statement, true)?;
@@ -508,7 +512,7 @@ impl Parser {
         Ok(Stmt::Case(case, Box::new(block)))
     }
 
-    fn expr(&mut self, min_prec: u8) -> Result<Expr, Error> {
+    fn expr(&mut self, min_prec: u8) -> Result<Expr, ()> {
         let t = self.pop()?;
         let mut left = match t.kind {
                 TokenKind::Number | TokenKind::Boolean => {
@@ -559,7 +563,8 @@ impl Parser {
                     self.assert(TokenKind::RParen)?;
                     expr
                 }
-                _ => return Err(Error::new(t.loc, ErrorKind::ExpectedExpr(t))),
+                _ => panic!()
+                //_ => return Err(Error::new(t.loc, ErrorKind::ExpectedExpr(t))),
             };
 
         loop {
@@ -582,7 +587,8 @@ impl Parser {
                         self.tokens.push(t);
                         break;
                     }
-                    return Err(Error::new(t.loc, ErrorKind::ExpectedBinOp(t)));
+                    //return Err(Error::new(t.loc, ErrorKind::ExpectedBinOp(t)));
+                    panic!()
                 }
             };
 
@@ -593,13 +599,10 @@ impl Parser {
 
             let right = self.expr(op.precedence().1)?;
             if op == BinOp::Assign {
-                if let Expr::Identifier(l) = left {
-                    let s = match l {
-                        Literal::Identifier(i) => i,
-                        _ => unreachable!(),
-                    };
+                if let Expr::Identifier(Literal::Identifier(s)) = &left {
                     if matches!(s.as_str(), "Buffer" | "FBuffer" | "Array" | "FlagArray") {
-                        left = Expr::ArrayAssign(l, Box::new(right));
+                        left =
+                            Expr::ArrayAssign(Literal::Identifier(s.to_string()), Box::new(right));
                         continue;
                     }
                 }
@@ -609,7 +612,7 @@ impl Parser {
         Ok(left)
     }
 
-    fn pop(&mut self) -> Result<Token, Error> {
+    fn pop(&mut self) -> Result<Token, ()> {
         Ok(match self.tokens.pop() {
             Some(x) => x,
             None => {
@@ -622,33 +625,35 @@ impl Parser {
         })
     }
 
-    fn kind(&mut self) -> Result<TokenKind, Error> {
+    fn kind(&mut self) -> Result<TokenKind, ()> {
         let t = self.pop()?;
         let kind = t.kind;
         self.tokens.push(t);
         Ok(kind)
     }
 
-    fn consume(&mut self, kind: TokenKind) -> Result<Token, Error> {
+    fn consume(&mut self, kind: TokenKind) -> Result<Token, ()> {
         let t = self.pop()?;
         if t.kind == kind {
             return Ok(t);
         }
 
+        /*
         Err(Error::new(
             t.loc,
             ErrorKind::UnexpectedToken(kind, Rc::clone(&t)),
-        ))
+        ))*/
+        panic!("Expected {} found {}", kind, t.kind)
     }
 
-    fn peek(&mut self, kind: TokenKind) -> Result<bool, Error> {
+    fn peek(&mut self, kind: TokenKind) -> Result<bool, ()> {
         let tok = self.pop()?;
         let ret = tok.kind == kind;
         self.tokens.push(tok);
         Ok(ret)
     }
 
-    fn peek_over_newlines(&mut self, kind: TokenKind) -> Result<bool, Error> {
+    fn peek_over_newlines(&mut self, kind: TokenKind) -> Result<bool, ()> {
         let mut tok = self.pop()?;
         let mut toks = vec![];
         while tok.kind == TokenKind::Newline {
@@ -661,12 +666,12 @@ impl Parser {
         Ok(ret)
     }
 
-    fn assert(&mut self, kind: TokenKind) -> Result<(), Error> {
+    fn assert(&mut self, kind: TokenKind) -> Result<(), ()> {
         assert_eq!(self.pop()?.kind, kind);
         Ok(())
     }
 
-    fn skip_newlines(&mut self) -> Result<(), Error> {
+    fn skip_newlines(&mut self) -> Result<(), ()> {
         loop {
             let t = self.pop()?;
             if t.kind != TokenKind::Newline {

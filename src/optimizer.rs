@@ -3,63 +3,45 @@ use crate::{
     parser::{BinOp, Expr, Stmt, UnOp},
 };
 
-pub fn optimize_ast(stmts: &mut Vec<Stmt>) {
-    for (i, stmt) in stmts.iter_mut().enumerate() {
-        collapse_stmt_node(stmt);
+pub fn optimize_stmts(stmts: &mut [Stmt]) {
+    for stmt in stmts {
+        collapse_stmt(stmt);
         fold_redundant_blocks(stmt);
-        /*
-        if let Some(n) = try_elim_if_else_stmt(stmt) {
-            let (left, right) = stmts.split_at_mut(i);
-
-            // Create an empty vector to replace the elements at the specified index
-            let mut replacement = Vec::new();
-        
-            // Append the elements from the left slice to the replacement vector
-            replacement.append(left);
-        
-            // Append the elements from the insert_vector to the replacement vector
-            replacement.append(&mut insert_vector.into());
-        
-            // Append the remaining elements from the right slice to the replacement vector
-            replacement.append(right);
-        
-            // Replace the elements in the main_vector with the elements in the replacement vector
-            *main_vector = replacement;
-        }
-        */
     }
 }
 
-fn collapse_stmt_node(stmt: &mut Stmt) {
+fn collapse_stmt(stmt: &mut Stmt) {
     match stmt {
-        Stmt::Script(_, s) => collapse_stmt_node(s),
-        Stmt::Block(s) => optimize_ast(s),
+        Stmt::Script(_, s) => collapse_stmt(s),
+        Stmt::Block(s) => optimize_stmts(s),
         Stmt::Loop(e, s) => {
             if let Some(e) = e {
                 fold_expr_op(e);
             }
-            collapse_stmt_node(s);
+            collapse_stmt(s);
         }
         Stmt::IfElse(i, e) => {
-            collapse_stmt_node(i);
-            optimize_ast(e);
+            collapse_stmt(i);
+            optimize_stmts(e);
+
+            //try_elim_if_else_stmt(stmt);
         }
         Stmt::If(e, s) => {
-            fold_expr_op(e);
-            collapse_stmt_node(s);
+            //fold_expr_op(e);
+            collapse_stmt(s);
         }
-        Stmt::Else(Some(i), None) => collapse_stmt_node(i),
-        Stmt::Else(None, Some(s)) => collapse_stmt_node(s),
-        Stmt::Thread(s) => collapse_stmt_node(s),
-        Stmt::ChildThread(s) => collapse_stmt_node(s),
+        Stmt::Else(Some(i), None) => collapse_stmt(i),
+        Stmt::Else(None, Some(s)) => collapse_stmt(s),
+        Stmt::Thread(s) => collapse_stmt(s),
+        Stmt::ChildThread(s) => collapse_stmt(s),
         Stmt::Expr(e) => fold_expr_op(e),
         Stmt::Switch(e, s) => {
             fold_expr_op(e);
-            collapse_stmt_node(s);
+            collapse_stmt(s);
         }
         Stmt::Case(e, s) => {
             fold_expr_op(e);
-            collapse_stmt_node(s);
+            collapse_stmt(s);
         }
         _ => (),
     }
@@ -147,8 +129,8 @@ macro_rules! generate_binops {
                 fold_expr_op(r);
                 match op {
                 $(
-                    BinOp::$binop => match (l.get_literal(), r.get_literal()) {
-                        (Some(Literal::Number(x)), Some(Literal::Number(y))) => {
+                    BinOp::$binop => match (l.as_ref(), r.as_ref()) {
+                        (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
                             *$expr = Expr::Identifier(Literal::$type(*x $op *y));
                         }
                         _ => (),
@@ -180,8 +162,10 @@ fn fold_expr_op(expr: &mut Expr) {
 
     match expr {
         Expr::UnOp(op, e) => match op {
-            UnOp::Minus => match e.get_literal() {
-                Some(Literal::Number(n)) => *expr = Expr::Identifier(Literal::Number(-*n)),
+            UnOp::Minus => match &mut **e {
+                Expr::Identifier(Literal::Number(n)) => {
+                    *expr = Expr::Identifier(Literal::Number(-*n))
+                }
                 _ => {
                     fold_expr_op(e);
                 }

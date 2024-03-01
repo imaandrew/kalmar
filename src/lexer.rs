@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::error::{Error, ErrorKind};
+//use crate::error::{Error, ErrorKind};
 
 use std::string::ToString;
 use strum_macros::Display;
@@ -242,7 +242,7 @@ impl Lexer {
         }
     }
 
-    pub fn lex(&mut self) -> Result<Token, Error> {
+    pub fn lex(&mut self) -> Result<Token, ()> {
         if !self.at_end() {
             self.col += self.curr - self.start;
             self.start = self.curr;
@@ -254,7 +254,7 @@ impl Lexer {
         Ok(self.create_token(TokenKind::Eof))
     }
 
-    fn lex_token(&mut self) -> Result<Option<Token>, Error> {
+    fn lex_token(&mut self) -> Result<Option<Token>, ()> {
         let c = self.next();
         match c {
             '(' | ')' | '{' | '}' | '[' | ']' | ':' | ',' => Ok(Some(
@@ -295,10 +295,13 @@ impl Lexer {
                 Ok(Some(t))
             }
             _ if c.is_alphanumeric() || c == '_' => Ok(Some(self.identifier())),
+            /*
             _ => Err(Error::new(
                 (self.line, self.col),
                 ErrorKind::UnexpectedChar(c),
             )),
+            */
+            _ => panic!()
         }
     }
 

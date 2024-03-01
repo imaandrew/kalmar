@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    error::{Error, ErrorKind},
+    //error::{Error, ErrorKind},
     lexer::Literal,
     parser::{BinOp, Expr, Stmt, UnOp},
 };
@@ -45,30 +45,33 @@ impl SemChecker<'_> {
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn check_ast(&mut self, ast: &'a Vec<Stmt>) -> Result<(), Error> {
+    pub fn check_ast(&mut self, ast: &'a Vec<Stmt>) -> Result<(), ()> {
         self.check_nodes(ast)?;
         self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts);
         Ok(())
     }
 
-    fn check_nodes(&mut self, stmts: &'a Vec<Stmt>) -> Result<(), Error> {
+    fn check_nodes(&mut self, stmts: &'a Vec<Stmt>) -> Result<(), ()> {
         for stmt in stmts {
             self.check_stmt_node(stmt)?;
         }
         Ok(())
     }
 
-    fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), Error> {
+    fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), ()> {
         match stmt {
             Stmt::Script(i, s) => {
                 self.declared_labels.clear();
                 self.referenced_labels.clear();
                 let script = self
                     .check_identifier_uniqueness(i, &self.declared_scripts, || ())
+                    /*
                     .ok_or(Error::new(
                         stmt.get_token().as_ref().unwrap().loc,
                         ErrorKind::RedeclaredScr(Rc::clone(stmt.get_token().as_ref().unwrap())),
                     ))?;
+                    */
+                    .ok_or(())?;
                 self.declared_scripts.push(script);
                 self.check_stmt_node(s)?;
                 self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels);
@@ -80,10 +83,13 @@ impl<'a> SemChecker<'a> {
                         panic!("Cannot have more than 16 labels per script");
                     }
                 })
+                /*
                 .ok_or(Error::new(
                     stmt.get_token().as_ref().unwrap().loc,
                     ErrorKind::RedeclaredLabel(Rc::clone(stmt.get_token().as_ref().unwrap())),
                 ))?,
+                */
+                .ok_or(())?
             ),
             Stmt::Goto(l) => match l {
                 Literal::Identifier(i) => {
