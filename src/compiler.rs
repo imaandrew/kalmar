@@ -1,14 +1,16 @@
-use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use num_enum::TryFromPrimitive;
+use strum_macros::Display;
 
+use crate::error::KalmarError;
 use crate::lexer::Literal;
-use crate::parser::{ASTNode, BinOp, Expr, Stmt, UnOp};
+use crate::parser::{BinOp, Expr, Stmt, UnOp};
 
-#[derive(TryFromPrimitive)]
-#[repr(u8)]
-enum Op {
+#[derive(TryFromPrimitive, Debug, PartialEq, Eq, Display)]
+#[repr(u32)]
+pub enum Op {
     InternalFetch,
     End,
     Return,
@@ -107,8 +109,8 @@ enum Op {
 }
 
 impl Op {
-    fn get_arg_count(&self) -> u32 {
-        match self {
+    pub fn get_arg_count(&self) -> Option<u32> {
+        Some(match self {
             Self::End
             | Self::Return
             | Self::EndLoop
@@ -201,8 +203,12 @@ impl Op {
             | Self::Op92
             | Self::Op93
             | Self::Op94
-            | Self::Call => unreachable!(),
-        }
+            | Self::Call => return None,
+        })
+    }
+
+    pub fn from_u32(op: u32) -> Result<Self, KalmarError> {
+        Op::try_from(op).map_err(|_| KalmarError::InvalidOpcode(op))
     }
 }
 
@@ -210,20 +216,26 @@ pub struct Compiler<'a> {
     syms: HashMap<&'a str, u32>,
     labels: HashMap<String, u32>,
     num_labels: u32,
+    base_addr: u32,
+    unresolved_syms: Vec<(&'a str, u32)>,
+    code: Vec<u32>,
 }
 
 impl Default for Compiler<'_> {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new() -> Self {
+    pub fn new(base_addr: u32) -> Self {
         Compiler {
             syms: HashMap::new(),
             labels: HashMap::new(),
             num_labels: 0,
+            base_addr,
+            unresolved_syms: vec![],
+            code: vec![],
         }
     }
 
@@ -231,82 +243,98 @@ impl<'a> Compiler<'a> {
         self.syms.extend(syms)
     }
 
-    pub fn compile(&mut self, stmts: &Vec<ASTNode>) -> Vec<u32> {
-        let mut code = vec![];
+    pub fn compile(&mut self, stmts: &'a Vec<Stmt>) -> Result<Vec<u32>, KalmarError> {
         for s in stmts {
-            code.append(&mut self.compile_stmt(s));
+            self.compile_stmt(s)?;
         }
 
-        code
+        for (s, a) in &self.unresolved_syms {
+            let s = self
+                .syms
+                .get(s)
+                .ok_or(KalmarError::UndefinedSymbol(s.to_string()))?;
+            self.code[*a as usize] = *s;
+        }
+
+        Ok(std::mem::take(&mut self.code))
     }
 
-    fn compile_stmt(&mut self, stmt: &ASTNode) -> Vec<u32> {
-        let mut bin = vec![];
-
+    fn compile_stmt(&mut self, stmt: &'a Stmt) -> Result<(), KalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
-                bin.push(Op::$op as u32);
-                bin.push(Op::$op.get_arg_count());
+                self.code.push(Op::$op as u32);
+                self.code.push(Op::$op.get_arg_count().unwrap_or_else(|| {
+                    panic!("Called get_arg_count on non-applicable Op: {:?}", Op::$op)
+                }));
             }};
         }
 
-        match stmt.get_stmt() {
-            Stmt::Script(_, s) => {
-                bin.append(&mut self.compile_stmt(s));
+        match stmt {
+            Stmt::Script(l, s) => {
+                let l = match l {
+                    Literal::Identifier(i) => i,
+                    _ => unreachable!(),
+                };
+                self.syms
+                    .insert(l, 4 * self.code.len() as u32 + self.base_addr);
+                self.compile_stmt(s)?;
                 add_op!(End);
             }
             Stmt::Block(stmts) => {
                 for s in stmts {
-                    bin.append(&mut self.compile_stmt(s));
+                    self.compile_stmt(s)?;
                 }
             }
             Stmt::Return => {
                 add_op!(Return);
             }
             Stmt::Label(n) => {
-                let lbl = match n.as_ref() {
+                let lbl = match n {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
                 self.labels.insert(lbl.to_string(), self.num_labels);
                 add_op!(Label);
-                bin.push(self.num_labels);
+                self.code.push(self.num_labels);
                 self.num_labels += 1;
             }
             Stmt::Goto(n) => {
-                let lbl = match n.as_ref() {
+                let lbl = match n {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
                 add_op!(Goto);
-                bin.push(*self.labels.get(lbl).unwrap());
+                // TODO: handle unresolved labels
+                self.code.push(*self.labels.get(lbl).unwrap());
             }
             Stmt::Loop(e, s) => {
                 add_op!(Loop);
                 if let Some(e) = e {
-                    bin.append(&mut self.compile_expr(e));
+                    self.compile_expr(e)?;
                 } else {
-                    bin.push(0);
+                    self.code.push(0);
                 }
-                bin.append(&mut self.compile_stmt(s));
+                self.compile_stmt(s)?;
                 add_op!(EndLoop);
             }
             Stmt::BreakLoop => {
                 add_op!(BreakLoop);
             }
             Stmt::IfElse(i, e) => {
-                bin.append(&mut self.compile_stmt(i));
-                for expr in e {
-                    bin.append(&mut self.compile_stmt(expr));
+                self.compile_stmt(i)?;
+
+                if let Some(e) = e {
+                    self.compile_stmt(e)?;
                 }
                 add_op!(EndIf);
             }
             Stmt::If(e, s) => {
-                match e.get_expr() {
-                    Expr::BinOp(_, _, _) => bin.append(&mut self.compile_expr(e)),
+                match e {
+                    Expr::BinOp(_, _, _) => self.compile_expr(e)?,
                     Expr::UnOp(UnOp::Bang, e) => {
-                        let mut e = self.compile_expr(e);
-                        e[0] = match Op::try_from(e[0] as u8).unwrap() {
+                        let start = self.code.len();
+                        self.compile_expr(e)?;
+                        self.code[start] = match Op::from_u32(self.code[start])? {
                             Op::IfEq => Op::IfNe,
                             Op::IfNe => Op::IfEq,
                             Op::IfLt => Op::IfGe,
@@ -317,33 +345,31 @@ impl<'a> Compiler<'a> {
                             Op::IfNotFlag => Op::IfFlag,
                             _ => unreachable!(),
                         } as u32;
-                        bin.append(&mut e);
-                        bin.push(2);
                     }
-                    p => panic!("{:?}", p),
+                    _ => unreachable!(),
                 }
-                bin.append(&mut self.compile_stmt(s));
+                self.compile_stmt(s)?;
             }
             Stmt::Else(Some(i), None) => {
                 add_op!(Else);
-                bin.append(&mut self.compile_stmt(i))
+                self.compile_stmt(i)?;
             }
             Stmt::Else(None, Some(s)) => {
                 add_op!(Else);
-                bin.append(&mut self.compile_stmt(s));
+                self.compile_stmt(s)?;
             }
             Stmt::Switch(e, s) => {
-                match e.get_expr() {
+                match e {
                     Expr::Array(_, _) => add_op!(Switch),
                     Expr::Identifier(_) => add_op!(SwitchConst),
                     _ => panic!(),
                 }
-                bin.append(&mut self.compile_expr(e));
-                bin.append(&mut self.compile_stmt(s));
+                self.compile_expr(e)?;
+                self.compile_stmt(s)?;
                 add_op!(EndSwitch);
             }
             Stmt::Case(e, s) => {
-                match e.get_expr() {
+                match e {
                     Expr::UnOp(op, e) => {
                         match op {
                             UnOp::Equal => add_op!(CaseEq),
@@ -355,7 +381,7 @@ impl<'a> Compiler<'a> {
                             UnOp::Ampersand => add_op!(CaseFlag),
                             _ => unreachable!(),
                         }
-                        bin.append(&mut self.compile_expr(e));
+                        self.compile_expr(e)?;
                     }
                     Expr::BinOp(op, e, b) => {
                         if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
@@ -363,13 +389,13 @@ impl<'a> Compiler<'a> {
                         } else if *op == BinOp::Range {
                             add_op!(CaseRange);
                         }
-                        bin.append(&mut self.compile_expr(e));
+                        self.compile_expr(e)?;
                         match op {
                             BinOp::BitOr => add_op!(CaseOrEq),
                             BinOp::BitAnd => add_op!(CaseAndEq),
                             _ => (),
                         }
-                        bin.append(&mut self.compile_expr(b));
+                        self.compile_expr(b)?;
                         if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
                             add_op!(EndCaseGroup);
                         }
@@ -377,31 +403,31 @@ impl<'a> Compiler<'a> {
                     Expr::Default => {
                         add_op!(CaseDefault);
                     }
-                    Expr::Identifier(_) => {
+                    Expr::Identifier(_) | Expr::Array(_, _) => {
                         add_op!(CaseEq);
-                        bin.append(&mut self.compile_expr(e));
+                        self.compile_expr(e)?;
                     }
-                    e => panic!("ERROR: {:?}", e),
+                    _ => unreachable!(),
                 }
-                bin.append(&mut self.compile_stmt(s));
+                self.compile_stmt(s)?;
             }
             Stmt::BreakCase => {
                 add_op!(BreakSwitch);
             }
-            Stmt::Expr(e) => bin.append(&mut self.compile_expr(e)),
+            Stmt::Expr(e) => self.compile_expr(e)?,
             Stmt::Thread(s) => {
                 add_op!(Thread);
-                bin.append(&mut self.compile_stmt(s));
+                self.compile_stmt(s)?;
                 add_op!(EndThread);
             }
             Stmt::ChildThread(s) => {
                 add_op!(ChildThread);
-                bin.append(&mut self.compile_stmt(s));
+                self.compile_stmt(s)?;
                 add_op!(EndChildThread);
             }
             Stmt::Jump(i) => {
                 add_op!(Jump);
-                bin.push(match i.borrow() {
+                self.code.push(match i {
                     Literal::Number(n) => n.as_u32(),
                     _ => todo!(),
                 });
@@ -410,46 +436,53 @@ impl<'a> Compiler<'a> {
             Stmt::Else(_, _) => unreachable!(),
         }
 
-        bin
+        Ok(())
     }
 
-    fn compile_expr(&self, expr: &ASTNode) -> Vec<u32> {
-        let mut bin = vec![];
-
+    fn compile_expr(&mut self, expr: &'a Expr) -> Result<(), KalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
-                bin.push(Op::$op as u32);
-                bin.push(Op::$op.get_arg_count());
+                self.code.push(Op::$op as u32);
+                self.code.push(Op::$op.get_arg_count().unwrap());
             }};
         }
 
-        match expr.get_expr() {
-            Expr::Identifier(lit) => match lit.borrow() {
-                Literal::Number(n) => bin.push(n.as_u32()),
-                Literal::Identifier(i) => bin.push(*self.syms.get(i.as_str()).unwrap()),
-                Literal::Boolean(b) => bin.push(if *b { 1 } else { 0 }),
+        match expr {
+            Expr::Identifier(lit) => match lit {
+                Literal::Number(n) => self.code.push(n.as_u32()),
+                Literal::Identifier(i) => {
+                    self.code
+                        .push(*self.syms.get(i.as_str()).unwrap_or_else(|| {
+                            self.unresolved_syms.push((i, self.code.len() as u32));
+                            &0
+                        }))
+                }
+                Literal::Boolean(b) => self.code.push(if *b { 1 } else { 0 }),
             },
-            Expr::UnOp(op, expr) => {
+            Expr::UnOp(_op, _expr) => {
+                panic!("idk why this code is here i dont think its reachable lmao");
+                /*
                 let e = self.compile_expr(expr);
                 assert_eq!(e.len(), 1);
                 match op {
-                    UnOp::Minus => bin.push(*e.first().unwrap() as i32 as u32),
+                    UnOp::Minus => self.code.push(*e.first().unwrap() as i32 as u32),
                     _ => todo!(),
                 }
+                */
             }
             Expr::BinOp(op, l, r) => match op {
                 BinOp::BitAnd => {
                     add_op!(IfFlag);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Range => {
                     add_op!(CaseRange);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::PlusEq => {
-                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
+                    if let Some(Literal::Number(n)) = r.get_literal() {
                         if n.is_float() {
                             add_op!(AddF)
                         } else {
@@ -458,11 +491,11 @@ impl<'a> Compiler<'a> {
                     } else {
                         add_op!(Add);
                     }
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::MinusEq => {
-                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
+                    if let Some(Literal::Number(n)) = r.get_literal() {
                         if n.is_float() {
                             add_op!(SubF)
                         } else {
@@ -471,11 +504,11 @@ impl<'a> Compiler<'a> {
                     } else {
                         add_op!(Sub);
                     }
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::StarEq => {
-                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
+                    if let Some(Literal::Number(n)) = r.get_literal() {
                         if n.is_float() {
                             add_op!(MulF)
                         } else {
@@ -484,11 +517,11 @@ impl<'a> Compiler<'a> {
                     } else {
                         add_op!(Mul);
                     }
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::DivEq => {
-                    if let Some(Literal::Number(n)) = r.get_expr().get_literal() {
+                    if let Some(Literal::Number(n)) = r.get_literal() {
                         if n.is_float() {
                             add_op!(DivF)
                         } else {
@@ -497,110 +530,110 @@ impl<'a> Compiler<'a> {
                     } else {
                         add_op!(Div);
                     }
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::ModEq => {
                     add_op!(Mod);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::AndEq => {
-                    match r.get_expr() {
+                    match r.deref() {
                         Expr::Array(_, _) => add_op!(BitwiseAnd),
-                        Expr::Identifier(l) if matches!(l.borrow(), Literal::Number(_)) => {
+                        Expr::Identifier(Literal::Number(_)) => {
                             add_op!(BitwiseAndConst)
                         }
                         _ => unreachable!(),
                     }
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::OrEq => {
-                    match r.get_expr() {
+                    match r.deref() {
                         Expr::Array(_, _) => add_op!(BitwiseOr),
-                        Expr::Identifier(l) if matches!(l.borrow(), Literal::Number(_)) => {
+                        Expr::Identifier(Literal::Number(_)) => {
                             add_op!(BitwiseOrConst)
                         }
                         _ => unreachable!(),
                     }
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
-                BinOp::Assign => match r.get_expr() {
-                    Expr::Identifier(lit) if matches!(lit.borrow(), Literal::Number(_)) => {
-                        if let Literal::Number(n) = lit.borrow() {
+                BinOp::Assign => match r.deref() {
+                    Expr::Identifier(lit) if matches!(lit, Literal::Number(_)) => {
+                        if let Literal::Number(n) = lit {
                             if n.is_float() {
                                 add_op!(SetF);
                             } else {
                                 add_op!(Set);
                             }
-                            bin.append(&mut self.compile_expr(l));
-                            bin.append(&mut self.compile_expr(r));
+                            self.compile_expr(l)?;
+                            self.compile_expr(r)?;
                         }
                     }
-                    Expr::Identifier(i) if matches!(i.borrow(), Literal::Identifier(_)) => {
-                        if let Literal::Identifier(i) = i.borrow() {
+                    Expr::Identifier(i) if matches!(i, Literal::Identifier(_)) => {
+                        if let Literal::Identifier(i) = i {
                             match i.as_str() {
                                 "Buffer" => add_op!(BufPeek),
                                 "FBuffer" => add_op!(FBufPeek),
                                 _ => panic!(),
                             }
-                            bin.append(&mut self.compile_expr(l));
+                            self.compile_expr(l)?;
                         }
                     }
                     Expr::Array(_, _) => {
                         add_op!(Set);
-                        bin.append(&mut self.compile_expr(l));
-                        bin.append(&mut self.compile_expr(r));
+                        self.compile_expr(l)?;
+                        self.compile_expr(r)?;
                     }
                     Expr::UnOp(UnOp::Ampersand, r) => {
                         add_op!(SetConst);
-                        bin.append(&mut self.compile_expr(l));
-                        bin.append(&mut self.compile_expr(r));
+                        self.compile_expr(l)?;
+                        self.compile_expr(r)?;
                     }
-                    Expr::FuncCall(i, a) if matches!(i.borrow(), Literal::Identifier(_)) => {
-                        if let Literal::Identifier(s) = i.borrow() {
+                    Expr::FuncCall(i, a) if matches!(i, Literal::Identifier(_)) => {
+                        if let Literal::Identifier(s) = i {
                             let f = self.get_func(s, true).unwrap();
-                            bin.push(f.0);
-                            bin.push(f.1 as u32);
+                            self.code.push(f.0);
+                            self.code.push(f.1 as u32);
                             for arg in a {
-                                bin.append(&mut self.compile_expr(arg));
+                                self.compile_expr(arg)?;
                             }
-                            bin.append(&mut self.compile_expr(l));
+                            self.compile_expr(l)?;
                         }
                     }
                     e => panic!("{:?}", e),
                 },
                 BinOp::Equal => {
                     add_op!(IfEq);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::NotEqual => {
                     add_op!(IfNe);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Less => {
                     add_op!(IfLt);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Greater => {
                     add_op!(IfGt);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::LessEq => {
                     add_op!(IfLe);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::GreaterEq => {
                     add_op!(IfGe);
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Plus
                 | BinOp::Minus
@@ -611,14 +644,16 @@ impl<'a> Compiler<'a> {
                     unreachable!()
                 }
                 BinOp::Arrow => {
-                    let vars = self.compile_expr(l);
-                    let mut num_vars = vars.len();
-                    let mut vars = vars.iter();
+                    let start = self.code.len();
+                    self.compile_expr(l)?;
+                    let mut num_vars = self.code.len() - start;
+                    let mut vars = self.code.drain(start..);
+                    let mut v = vec![];
                     for i in (1..5usize).rev() {
                         if num_vars == 0 {
                             break;
                         };
-                        let op = match r.get_expr().get_literal() {
+                        let op = match r.get_literal() {
                             Some(Literal::Identifier(s)) if s == "Buffer" => Op::BufRead1 as usize,
                             Some(Literal::Identifier(s)) if s == "FBuffer" => {
                                 Op::FBufRead1 as usize
@@ -628,55 +663,57 @@ impl<'a> Compiler<'a> {
                             + i;
                         let num_times = num_vars / i;
                         num_vars %= i;
-                        bin.push(op as u32);
-                        bin.push(num_times as u32);
+                        v.push(op as u32);
+                        v.push(num_times as u32);
                         for _ in 0..num_times {
-                            bin.push(*vars.next().unwrap());
+                            v.push(vars.next().unwrap());
                         }
                     }
+                    drop(vars);
+                    self.code.append(&mut v);
                 }
                 BinOp::Comma => {
-                    bin.append(&mut self.compile_expr(l));
-                    bin.append(&mut self.compile_expr(r));
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
             },
             Expr::Array(ident, index) => {
-                let ident = match ident.borrow() {
+                let ident = match ident {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
 
-                let index = match index.get_expr().get_literal() {
+                let index = match index.get_literal() {
                     Some(Literal::Number(n)) => n.as_u32(),
                     _ => unreachable!(),
                 };
 
-                bin.push(get_var(ident, index));
+                self.code.push(get_var(ident, index));
             }
             Expr::FuncCall(func, args) => {
-                let addr = match func.borrow() {
+                let addr = match func {
                     Literal::Identifier(i) => self
                         .get_func(i, false)
-                        .unwrap_or_else(|| panic!("Missing function: {}", i)),
+                        .ok_or_else(|| KalmarError::UndefinedFunction(i.to_string()))?,
                     _ => unreachable!(),
                 };
                 if addr.1 == -1 {
-                    bin.push(Op::Call as u32);
-                    bin.push(args.len() as u32 + 1);
-                    bin.push(addr.0);
+                    self.code.push(Op::Call as u32);
+                    self.code.push(args.len() as u32 + 1);
+                    self.code.push(addr.0);
                     for arg in args {
-                        bin.append(&mut self.compile_expr(arg));
+                        self.compile_expr(arg)?;
                     }
                 } else {
-                    bin.push(addr.0);
-                    bin.push(addr.1 as u32);
+                    self.code.push(addr.0);
+                    self.code.push(addr.1 as u32);
                     for arg in args {
-                        bin.append(&mut self.compile_expr(arg));
+                        self.compile_expr(arg)?;
                     }
                 }
             }
             Expr::ArrayAssign(ident, expr) => {
-                let ident = match ident.borrow() {
+                let ident = match ident {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
@@ -688,14 +725,14 @@ impl<'a> Compiler<'a> {
                     "FlagArray" => add_op!(UseFlags),
                     _ => panic!(),
                 }
-                bin.append(&mut self.compile_expr(expr));
+                self.compile_expr(expr)?;
             }
             Expr::Default => {
                 add_op!(CaseDefault);
             }
         }
 
-        bin
+        Ok(())
     }
 
     fn get_func(&self, func: &str, returns_val: bool) -> Option<(u32, i32)> {
@@ -730,7 +767,7 @@ impl<'a> Compiler<'a> {
 
         match op {
             Some(op) => {
-                let a = op.get_arg_count();
+                let a = op.get_arg_count().unwrap();
                 Some((op as u32, a as i32))
             }
             None => self.syms.get(func).copied().map(|x| (x, -1)),

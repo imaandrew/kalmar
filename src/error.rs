@@ -1,6 +1,9 @@
 use std::{fmt, io::Write, rc::Rc};
+use thiserror::Error;
 
+use crate::compiler::Op;
 use crate::lexer::{Token, TokenKind};
+use crate::sem_checker::Type;
 use std::io::IsTerminal;
 
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
@@ -76,6 +79,46 @@ impl Error {
             underline_len: l,
         }
     }
+}
+
+#[derive(Error, Debug)]
+pub enum KalmarError {
+    #[error("unexpected character `{0}` when lexing")]
+    UnexpectedChar(char),
+    #[error("could not parse `{0}` as int")]
+    IntParseError(String),
+    #[error("unexpected token: expected `{0}`, found `{1}`")]
+    UnexpectedToken(TokenKind, TokenKind),
+    #[error("expected `{0}` operator, found `{1}`")]
+    InvalidOperator(&'static str, TokenKind),
+    #[error("expected statement, found `{0}`")]
+    ExpectedStmt(TokenKind),
+    #[error("expected expression, found `{0}`")]
+    ExpectedExpr(TokenKind),
+    #[error("script `{0}` redeclared")]
+    RedeclaredScript(String),
+    #[error("label `{0}` redeclared")]
+    RedeclaredLabel(String),
+    #[error("cannot have more than 16 labels per script")]
+    TooManyLabels,
+    #[error("undeclared reference to `{0:?}`")]
+    UndeclaredReference(Vec<String>),
+    #[error("mismatched types: expected `{0}`, found `{1}`")]
+    TypeMismatch(Type, Type),
+    #[error("mismatched types: expected one of `{0:?}`, found `{1}`")]
+    TypesMismatch(Vec<Type>, Type),
+    #[error("opcode {0} is stating {1} args instead of expected {2}")]
+    UnexpectOpArgCount(Op, u32, u32),
+    #[error("idk come up with something")]
+    CursorOutOfBounds(usize, usize),
+    #[error("unexpected end token")]
+    UnexpectedEndToken,
+    #[error("invalid opcode {0}")]
+    InvalidOpcode(u32),
+    #[error("referencing undefined function `{0}`")]
+    UndefinedFunction(String),
+    #[error("referencing undefined symbol `{0}`")]
+    UndefinedSymbol(String),
 }
 
 #[derive(Debug)]
