@@ -25,11 +25,9 @@ fn collapse_stmt(stmt: &mut Stmt) {
             if let Some(e) = e {
                 collapse_stmt(e);
             }
-
-            //try_elim_if_else_stmt(stmt);
         }
         Stmt::If(e, s) => {
-            //fold_expr_op(e);
+            fold_expr_op(e);
             collapse_stmt(s);
         }
         Stmt::Else(Some(i), None) => collapse_stmt(i),
@@ -47,50 +45,6 @@ fn collapse_stmt(stmt: &mut Stmt) {
         }
         _ => (),
     }
-}
-
-fn try_elim_if_else_stmt(stmt: &mut Stmt) {
-    let (i, e) = match stmt {
-        Stmt::IfElse(i, e) => (i, e),
-        _ => unreachable!(),
-    };
-
-    fn try_elim_if_stmt(stmt: &mut Stmt) -> bool {
-        match stmt {
-            Stmt::If(Expr::Identifier(Literal::Boolean(b)), s) => {
-                if *b {
-                    *stmt = std::mem::take(&mut *s);
-                    return true;
-                }
-                false
-            }
-            Stmt::If(_, _) => true,
-            _ => unreachable!(),
-        }
-    }
-
-    if try_elim_if_stmt(i) {
-        return;
-    }
-
-    /*
-    for stmt in e {
-        match stmt {
-            Stmt::Else(Some(s), _) => {
-                if try_elim_if_stmt(s) {
-                    return;
-                }
-            }
-            Stmt::Else(_, Some(s)) => {
-                *stmt = std::mem::take(s);
-                return;
-            }
-            _ => unreachable!(),
-        }
-    }
-    */
-
-    *stmt = Stmt::Empty;
 }
 
 fn fold_redundant_blocks(stmt: &mut Stmt) {
