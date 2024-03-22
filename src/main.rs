@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn stderr::Error>> {
     c = c.syms(&s);
 
     let mut c = c.build();
-    c = c.parse().unwrap().sem_check().unwrap().optimize().compile();
+    c = c.parse()?.sem_check()?.optimize().compile();
 
     if let Some(o) = &cli.output {
         let o = File::create(o)?;

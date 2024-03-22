@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
 };
 
-//use crate::error::{Error, ErrorKind};
+use crate::error::KalmarError;
 
 use std::string::ToString;
 use strum_macros::Display;
@@ -241,7 +241,7 @@ impl Lexer {
         }
     }
 
-    pub fn lex(&mut self) -> Result<Token, ()> {
+    pub fn lex(&mut self) -> Result<Token, KalmarError> {
         if !self.at_end() {
             self.col += self.curr - self.start;
             self.start = self.curr;
@@ -253,7 +253,7 @@ impl Lexer {
         Ok(self.create_token(TokenKind::Eof))
     }
 
-    fn lex_token(&mut self) -> Result<Option<Token>, ()> {
+    fn lex_token(&mut self) -> Result<Option<Token>, KalmarError> {
         let c = self.next();
         match c {
             '(' | ')' | '{' | '}' | '[' | ']' | ':' | ',' => Ok(Some(
@@ -293,21 +293,16 @@ impl Lexer {
                 self.line_start = self.curr;
                 Ok(Some(t))
             }
-            _ if c.is_alphanumeric() || c == '_' => Ok(Some(self.identifier())),
-            /*
-            _ => Err(Error::new(
-                (self.line, self.col),
-                ErrorKind::UnexpectedChar(c),
-            )),
-            */
-            _ => panic!(),
+            _ if c.is_alphanumeric() || c == '_' => Ok(Some(self.identifier()?)),
+            _ => Err(KalmarError::UnexpectedChar(c)),
         }
     }
 
-    fn identifier(&mut self) -> Token {
-        while self.peek().is_alphanumeric()
-            || self.peek() == '_'
-            || (self.peek() == '.' && self.peek_over() != '.')
+    fn identifier(&mut self) -> Result<Token, KalmarError> {
+        while !self.at_end()
+            && (self.peek().is_alphanumeric()
+                || self.peek() == '_'
+                || (self.peek() == '.' && self.peek_over() != '.'))
         {
             self.next();
         }
@@ -316,19 +311,21 @@ impl Lexer {
 
         if text.contains('.') {
             if let Ok(num) = text.parse() {
-                return self.create_token_literal(
+                return Ok(self.create_token_literal(
                     TokenKind::Number,
                     Some(Literal::Number(Number::Float(num))),
-                );
+                ));
             }
         }
 
         if text.chars().next().unwrap().is_numeric() {
             if text.len() < 3 {
-                return self.create_token_literal(
+                return Ok(self.create_token_literal(
                     TokenKind::Number,
-                    Some(Literal::Number(Number::Int(text.parse().unwrap()))),
-                );
+                    Some(Literal::Number(Number::Int(
+                        text.parse().map_err(|_| KalmarError::IntParseError(text))?,
+                    ))),
+                ));
             }
 
             let base = match &text[..2] {
@@ -338,25 +335,26 @@ impl Lexer {
                 _ => 10,
             };
 
-            return self.create_token_literal(
+            return Ok(self.create_token_literal(
                 TokenKind::Number,
                 Some(Literal::Number(Number::Int(
-                    u32::from_str_radix(if base != 10 { &text[2..] } else { &text }, base).unwrap(),
+                    u32::from_str_radix(if base != 10 { &text[2..] } else { &text }, base)
+                        .map_err(|_| KalmarError::IntParseError(text))?,
                 ))),
-            );
+            ));
         }
 
         if let Ok(kind) = TokenKind::from_str(&text) {
-            return self.create_token(kind);
+            return Ok(self.create_token(kind));
         };
 
-        if text == "true" {
+        Ok(if text == "true" {
             self.create_token_literal(TokenKind::Boolean, Some(Literal::Boolean(true)))
         } else if text == "false" {
             self.create_token_literal(TokenKind::Boolean, Some(Literal::Boolean(false)))
         } else {
             self.create_token_literal(TokenKind::Identifier, Some(Literal::Identifier(text)))
-        }
+        })
     }
 
     fn next(&mut self) -> char {
@@ -365,11 +363,11 @@ impl Lexer {
     }
 
     fn peek(&self) -> char {
-        *self.data.get(self.curr).unwrap_or(&'\0')
+        *self.data.get(self.curr).unwrap()
     }
 
     fn peek_over(&self) -> char {
-        *self.data.get(self.curr + 1).unwrap_or(&'\0')
+        *self.data.get(self.curr + 1).unwrap()
     }
 
     pub fn at_end(&self) -> bool {

@@ -2,11 +2,13 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use num_enum::TryFromPrimitive;
+use strum_macros::Display;
 
+use crate::error::KalmarError;
 use crate::lexer::Literal;
 use crate::parser::{BinOp, Expr, Stmt, UnOp};
 
-#[derive(TryFromPrimitive, Debug, PartialEq, Eq)]
+#[derive(TryFromPrimitive, Debug, PartialEq, Eq, Display)]
 #[repr(u32)]
 pub enum Op {
     InternalFetch,
@@ -204,6 +206,10 @@ impl Op {
             | Self::Call => return None,
         })
     }
+
+    pub fn from_u32(op: u32) -> Result<Self, KalmarError> {
+        Op::try_from(op).map_err(|_| KalmarError::InvalidOpcode(op))
+    }
 }
 
 pub struct Compiler<'a> {
@@ -237,24 +243,29 @@ impl<'a> Compiler<'a> {
         self.syms.extend(syms)
     }
 
-    pub fn compile(&mut self, stmts: &'a Vec<Stmt>) -> Vec<u32> {
+    pub fn compile(&mut self, stmts: &'a Vec<Stmt>) -> Result<Vec<u32>, KalmarError> {
         for s in stmts {
-            self.compile_stmt(s);
+            self.compile_stmt(s)?;
         }
 
         for (s, a) in &self.unresolved_syms {
-            let s = self.syms.get(s).unwrap();
+            let s = self
+                .syms
+                .get(s)
+                .ok_or(KalmarError::UndefinedSymbol(s.to_string()))?;
             self.code[*a as usize] = *s;
         }
 
-        std::mem::take(&mut self.code)
+        Ok(std::mem::take(&mut self.code))
     }
 
-    fn compile_stmt(&mut self, stmt: &'a Stmt) {
+    fn compile_stmt(&mut self, stmt: &'a Stmt) -> Result<(), KalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
-                self.code.push(Op::$op.get_arg_count().unwrap());
+                self.code.push(Op::$op.get_arg_count().unwrap_or_else(|| {
+                    panic!("Called get_arg_count on non-applicable Op: {:?}", Op::$op)
+                }));
             }};
         }
 
@@ -262,16 +273,16 @@ impl<'a> Compiler<'a> {
             Stmt::Script(l, s) => {
                 let l = match l {
                     Literal::Identifier(i) => i,
-                    _ => panic!(),
+                    _ => unreachable!(),
                 };
                 self.syms
                     .insert(l, 4 * self.code.len() as u32 + self.base_addr);
-                self.compile_stmt(s);
+                self.compile_stmt(s)?;
                 add_op!(End);
             }
             Stmt::Block(stmts) => {
                 for s in stmts {
-                    self.compile_stmt(s);
+                    self.compile_stmt(s)?;
                 }
             }
             Stmt::Return => {
@@ -293,36 +304,37 @@ impl<'a> Compiler<'a> {
                     _ => unreachable!(),
                 };
                 add_op!(Goto);
+                // TODO: handle unresolved labels
                 self.code.push(*self.labels.get(lbl).unwrap());
             }
             Stmt::Loop(e, s) => {
                 add_op!(Loop);
                 if let Some(e) = e {
-                    self.compile_expr(e);
+                    self.compile_expr(e)?;
                 } else {
                     self.code.push(0);
                 }
-                self.compile_stmt(s);
+                self.compile_stmt(s)?;
                 add_op!(EndLoop);
             }
             Stmt::BreakLoop => {
                 add_op!(BreakLoop);
             }
             Stmt::IfElse(i, e) => {
-                self.compile_stmt(i);
+                self.compile_stmt(i)?;
 
                 if let Some(e) = e {
-                    self.compile_stmt(e);
+                    self.compile_stmt(e)?;
                 }
                 add_op!(EndIf);
             }
             Stmt::If(e, s) => {
                 match e {
-                    Expr::BinOp(_, _, _) => self.compile_expr(e),
+                    Expr::BinOp(_, _, _) => self.compile_expr(e)?,
                     Expr::UnOp(UnOp::Bang, e) => {
                         let start = self.code.len();
-                        self.compile_expr(e);
-                        self.code[start] = match Op::try_from(self.code[start]).unwrap() {
+                        self.compile_expr(e)?;
+                        self.code[start] = match Op::from_u32(self.code[start])? {
                             Op::IfEq => Op::IfNe,
                             Op::IfNe => Op::IfEq,
                             Op::IfLt => Op::IfGe,
@@ -334,17 +346,17 @@ impl<'a> Compiler<'a> {
                             _ => unreachable!(),
                         } as u32;
                     }
-                    p => panic!("{:?}", p),
+                    _ => unreachable!(),
                 }
-                self.compile_stmt(s);
+                self.compile_stmt(s)?;
             }
             Stmt::Else(Some(i), None) => {
                 add_op!(Else);
-                self.compile_stmt(i);
+                self.compile_stmt(i)?;
             }
             Stmt::Else(None, Some(s)) => {
                 add_op!(Else);
-                self.compile_stmt(s);
+                self.compile_stmt(s)?;
             }
             Stmt::Switch(e, s) => {
                 match e {
@@ -352,8 +364,8 @@ impl<'a> Compiler<'a> {
                     Expr::Identifier(_) => add_op!(SwitchConst),
                     _ => panic!(),
                 }
-                self.compile_expr(e);
-                self.compile_stmt(s);
+                self.compile_expr(e)?;
+                self.compile_stmt(s)?;
                 add_op!(EndSwitch);
             }
             Stmt::Case(e, s) => {
@@ -369,7 +381,7 @@ impl<'a> Compiler<'a> {
                             UnOp::Ampersand => add_op!(CaseFlag),
                             _ => unreachable!(),
                         }
-                        self.compile_expr(e);
+                        self.compile_expr(e)?;
                     }
                     Expr::BinOp(op, e, b) => {
                         if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
@@ -377,13 +389,13 @@ impl<'a> Compiler<'a> {
                         } else if *op == BinOp::Range {
                             add_op!(CaseRange);
                         }
-                        self.compile_expr(e);
+                        self.compile_expr(e)?;
                         match op {
                             BinOp::BitOr => add_op!(CaseOrEq),
                             BinOp::BitAnd => add_op!(CaseAndEq),
                             _ => (),
                         }
-                        self.compile_expr(b);
+                        self.compile_expr(b)?;
                         if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
                             add_op!(EndCaseGroup);
                         }
@@ -391,26 +403,26 @@ impl<'a> Compiler<'a> {
                     Expr::Default => {
                         add_op!(CaseDefault);
                     }
-                    Expr::Identifier(_) => {
+                    Expr::Identifier(_) | Expr::Array(_, _) => {
                         add_op!(CaseEq);
-                        self.compile_expr(e);
+                        self.compile_expr(e)?;
                     }
-                    e => panic!("ERROR: {:?}", e),
+                    _ => unreachable!(),
                 }
-                self.compile_stmt(s);
+                self.compile_stmt(s)?;
             }
             Stmt::BreakCase => {
                 add_op!(BreakSwitch);
             }
-            Stmt::Expr(e) => self.compile_expr(e),
+            Stmt::Expr(e) => self.compile_expr(e)?,
             Stmt::Thread(s) => {
                 add_op!(Thread);
-                self.compile_stmt(s);
+                self.compile_stmt(s)?;
                 add_op!(EndThread);
             }
             Stmt::ChildThread(s) => {
                 add_op!(ChildThread);
-                self.compile_stmt(s);
+                self.compile_stmt(s)?;
                 add_op!(EndChildThread);
             }
             Stmt::Jump(i) => {
@@ -423,9 +435,11 @@ impl<'a> Compiler<'a> {
             Stmt::Empty => (),
             Stmt::Else(_, _) => unreachable!(),
         }
+
+        Ok(())
     }
 
-    fn compile_expr(&mut self, expr: &'a Expr) {
+    fn compile_expr(&mut self, expr: &'a Expr) -> Result<(), KalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -459,13 +473,13 @@ impl<'a> Compiler<'a> {
             Expr::BinOp(op, l, r) => match op {
                 BinOp::BitAnd => {
                     add_op!(IfFlag);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Range => {
                     add_op!(CaseRange);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::PlusEq => {
                     if let Some(Literal::Number(n)) = r.get_literal() {
@@ -477,8 +491,8 @@ impl<'a> Compiler<'a> {
                     } else {
                         add_op!(Add);
                     }
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::MinusEq => {
                     if let Some(Literal::Number(n)) = r.get_literal() {
@@ -490,8 +504,8 @@ impl<'a> Compiler<'a> {
                     } else {
                         add_op!(Sub);
                     }
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::StarEq => {
                     if let Some(Literal::Number(n)) = r.get_literal() {
@@ -503,8 +517,8 @@ impl<'a> Compiler<'a> {
                     } else {
                         add_op!(Mul);
                     }
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::DivEq => {
                     if let Some(Literal::Number(n)) = r.get_literal() {
@@ -516,13 +530,13 @@ impl<'a> Compiler<'a> {
                     } else {
                         add_op!(Div);
                     }
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::ModEq => {
                     add_op!(Mod);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::AndEq => {
                     match r.deref() {
@@ -532,8 +546,8 @@ impl<'a> Compiler<'a> {
                         }
                         _ => unreachable!(),
                     }
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::OrEq => {
                     match r.deref() {
@@ -543,8 +557,8 @@ impl<'a> Compiler<'a> {
                         }
                         _ => unreachable!(),
                     }
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Assign => match r.deref() {
                     Expr::Identifier(lit) if matches!(lit, Literal::Number(_)) => {
@@ -554,8 +568,8 @@ impl<'a> Compiler<'a> {
                             } else {
                                 add_op!(Set);
                             }
-                            self.compile_expr(l);
-                            self.compile_expr(r);
+                            self.compile_expr(l)?;
+                            self.compile_expr(r)?;
                         }
                     }
                     Expr::Identifier(i) if matches!(i, Literal::Identifier(_)) => {
@@ -565,18 +579,18 @@ impl<'a> Compiler<'a> {
                                 "FBuffer" => add_op!(FBufPeek),
                                 _ => panic!(),
                             }
-                            self.compile_expr(l);
+                            self.compile_expr(l)?;
                         }
                     }
                     Expr::Array(_, _) => {
                         add_op!(Set);
-                        self.compile_expr(l);
-                        self.compile_expr(r);
+                        self.compile_expr(l)?;
+                        self.compile_expr(r)?;
                     }
                     Expr::UnOp(UnOp::Ampersand, r) => {
                         add_op!(SetConst);
-                        self.compile_expr(l);
-                        self.compile_expr(r);
+                        self.compile_expr(l)?;
+                        self.compile_expr(r)?;
                     }
                     Expr::FuncCall(i, a) if matches!(i, Literal::Identifier(_)) => {
                         if let Literal::Identifier(s) = i {
@@ -584,42 +598,42 @@ impl<'a> Compiler<'a> {
                             self.code.push(f.0);
                             self.code.push(f.1 as u32);
                             for arg in a {
-                                self.compile_expr(arg);
+                                self.compile_expr(arg)?;
                             }
-                            self.compile_expr(l);
+                            self.compile_expr(l)?;
                         }
                     }
                     e => panic!("{:?}", e),
                 },
                 BinOp::Equal => {
                     add_op!(IfEq);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::NotEqual => {
                     add_op!(IfNe);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Less => {
                     add_op!(IfLt);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Greater => {
                     add_op!(IfGt);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::LessEq => {
                     add_op!(IfLe);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::GreaterEq => {
                     add_op!(IfGe);
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
                 BinOp::Plus
                 | BinOp::Minus
@@ -631,7 +645,7 @@ impl<'a> Compiler<'a> {
                 }
                 BinOp::Arrow => {
                     let start = self.code.len();
-                    self.compile_expr(l);
+                    self.compile_expr(l)?;
                     let mut num_vars = self.code.len() - start;
                     let mut vars = self.code.drain(start..);
                     let mut v = vec![];
@@ -659,8 +673,8 @@ impl<'a> Compiler<'a> {
                     self.code.append(&mut v);
                 }
                 BinOp::Comma => {
-                    self.compile_expr(l);
-                    self.compile_expr(r);
+                    self.compile_expr(l)?;
+                    self.compile_expr(r)?;
                 }
             },
             Expr::Array(ident, index) => {
@@ -680,7 +694,7 @@ impl<'a> Compiler<'a> {
                 let addr = match func {
                     Literal::Identifier(i) => self
                         .get_func(i, false)
-                        .unwrap_or_else(|| panic!("Missing function: {}", i)),
+                        .ok_or_else(|| KalmarError::UndefinedFunction(i.to_string()))?,
                     _ => unreachable!(),
                 };
                 if addr.1 == -1 {
@@ -688,13 +702,13 @@ impl<'a> Compiler<'a> {
                     self.code.push(args.len() as u32 + 1);
                     self.code.push(addr.0);
                     for arg in args {
-                        self.compile_expr(arg);
+                        self.compile_expr(arg)?;
                     }
                 } else {
                     self.code.push(addr.0);
                     self.code.push(addr.1 as u32);
                     for arg in args {
-                        self.compile_expr(arg);
+                        self.compile_expr(arg)?;
                     }
                 }
             }
@@ -711,12 +725,14 @@ impl<'a> Compiler<'a> {
                     "FlagArray" => add_op!(UseFlags),
                     _ => panic!(),
                 }
-                self.compile_expr(expr);
+                self.compile_expr(expr)?;
             }
             Expr::Default => {
                 add_op!(CaseDefault);
             }
         }
+
+        Ok(())
     }
 
     fn get_func(&self, func: &str, returns_val: bool) -> Option<(u32, i32)> {

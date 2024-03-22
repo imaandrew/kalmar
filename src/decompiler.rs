@@ -3,10 +3,9 @@ use std::{
     io::{Cursor, Write},
 };
 
-use num_enum::TryFromPrimitive;
-
 use crate::{
     compiler::Op,
+    error::KalmarError,
     lexer::{Literal, Number},
     parser::{BinOp, Expr, Stmt, UnOp},
 };
@@ -26,21 +25,29 @@ impl<T> Cur<T>
 where
     T: AsRef<[u8]>,
 {
-    fn read_u32(&mut self) -> Option<u32> {
+    fn read_u32(&mut self) -> Result<u32, KalmarError> {
         self.pos += 4;
         self.inner
             .as_ref()
             .get(self.pos - 4..self.pos)
             .and_then(|x| x.try_into().ok())
             .map(u32::from_be_bytes)
+            .ok_or(KalmarError::CursorOutOfBounds(
+                self.pos,
+                self.inner.as_ref().len(),
+            ))
     }
 
-    fn peek(&mut self) -> Option<u32> {
+    fn peek(&mut self) -> Result<u32, KalmarError> {
         self.inner
             .as_ref()
             .get(self.pos..self.pos + 4)
             .and_then(|x| x.try_into().ok())
             .map(u32::from_be_bytes)
+            .ok_or(KalmarError::CursorOutOfBounds(
+                self.pos + 4,
+                self.inner.as_ref().len(),
+            ))
     }
 
     fn seek(&mut self, amt: usize) {
@@ -48,15 +55,12 @@ where
     }
 }
 
-pub fn decompile_script(code: &[u8]) -> Result<Stmt, ()> {
+pub fn decompile_script(code: &[u8]) -> Result<Stmt, KalmarError> {
     let mut c = Cur::new(code);
     let mut block = vec![];
 
-    while Op::try_from_primitive(c.peek().unwrap()).unwrap() != Op::End {
-        let s = match decompile_inst(&mut c) {
-            Ok(e) => e,
-            Err(_) => break,
-        };
+    while Op::from_u32(c.peek()?)? != Op::End {
+        let s = decompile_inst(&mut c)?;
         println!("{:?}", s);
         block.push(s)
     }
@@ -67,27 +71,24 @@ pub fn decompile_script(code: &[u8]) -> Result<Stmt, ()> {
     ))
 }
 
-fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
-    let op = Op::try_from_primitive(c.read_u32().unwrap()).unwrap();
-    let num_args = c.read_u32().unwrap();
+fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, KalmarError> {
+    let op = Op::from_u32(c.read_u32()?)?;
+    let num_args = c.read_u32()?;
 
     if let Some(x) = op.get_arg_count() {
         if num_args != x {
-            panic!(
-                "Op: {:?} has {} args instead of expected {}",
-                op, num_args, x
-            );
+            return Err(KalmarError::UnexpectOpArgCount(op, num_args, x));
         };
     }
 
     Ok(match op {
         Op::Return => Stmt::Return,
         Op::Label => {
-            let l = Literal::Number(Number::Int(c.read_u32().unwrap()));
+            let l = Literal::Number(Number::Int(c.read_u32()?));
             Stmt::Label(l)
         }
         Op::Goto => {
-            let l = Literal::Number(Number::Int(c.read_u32().unwrap()));
+            let l = Literal::Number(Number::Int(c.read_u32()?));
             Stmt::Goto(l)
         }
         Op::Loop => {
@@ -99,11 +100,11 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
             };
             let mut body = vec![];
             loop {
-                if Op::try_from_primitive(c.peek().unwrap()).unwrap() == Op::EndLoop {
+                if Op::from_u32(c.peek()?)? == Op::EndLoop {
                     c.seek(8);
                     break;
                 }
-                body.push(decompile_inst(c).unwrap());
+                body.push(decompile_inst(c)?);
             }
 
             Stmt::Loop(expr, Box::new(Stmt::Block(body)))
@@ -173,11 +174,15 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
             let mut case = vec![];
 
             'a: loop {
-                let op = Op::try_from_primitive(c.read_u32().unwrap()).unwrap();
-                assert_eq!(op.get_arg_count().unwrap(), c.read_u32().unwrap());
+                let op = Op::from_u32(c.read_u32()?)?;
+                let args = c.read_u32()?;
+                let op_arg_count = op.get_arg_count().unwrap();
+                if op_arg_count != args {
+                    return Err(KalmarError::UnexpectOpArgCount(op, op_arg_count, args));
+                }
                 let expr = if op == Op::CaseDefault {
                     Expr::Default
-                } else if op.get_arg_count().unwrap() == 1 {
+                } else if op_arg_count == 1 {
                     let op = match op {
                         Op::CaseEq => UnOp::Equal,
                         Op::CaseNe => UnOp::NotEqual,
@@ -190,15 +195,23 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
                             let mut val = decompile_expr(c)?;
                             let mut block = vec![];
                             loop {
-                                let op = Op::try_from_primitive(c.peek().unwrap()).unwrap();
+                                let op = Op::from_u32(c.peek()?)?;
                                 if op == Op::CaseOrEq {
                                     c.seek(4);
-                                    assert_eq!(op.get_arg_count().unwrap(), c.read_u32().unwrap());
+                                    let args = c.read_u32()?;
+                                    let op_arg_count = op.get_arg_count().unwrap();
+                                    if op_arg_count != args {
+                                        return Err(KalmarError::UnexpectOpArgCount(
+                                            op,
+                                            op_arg_count,
+                                            args,
+                                        ));
+                                    }
                                     let v = decompile_expr(c)?;
                                     val = Expr::BinOp(BinOp::BitOr, Box::new(val), Box::new(v));
                                 } else {
                                     while !matches!(
-                                        Op::try_from_primitive(c.peek().unwrap()).unwrap(),
+                                        Op::from_u32(c.peek()?)?,
                                         Op::CaseEq
                                             | Op::CaseNe
                                             | Op::CaseGt
@@ -216,9 +229,7 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
                                     break;
                                 }
                             }
-                            if Op::try_from_primitive(c.peek().unwrap()).unwrap()
-                                == Op::EndCaseGroup
-                            {
+                            if Op::from_u32(c.peek()?)? == Op::EndCaseGroup {
                                 c.seek(8);
                             }
                             case.push(Stmt::Case(val, Box::new(Stmt::Block(block))));
@@ -228,15 +239,23 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
                             let mut val = decompile_expr(c)?;
                             let mut block = vec![];
                             loop {
-                                let op = Op::try_from_primitive(c.peek().unwrap()).unwrap();
+                                let op = Op::from_u32(c.peek()?)?;
                                 if op == Op::CaseAndEq {
                                     c.seek(4);
-                                    assert_eq!(op.get_arg_count().unwrap(), c.read_u32().unwrap());
+                                    let args = c.read_u32()?;
+                                    let op_arg_count = op.get_arg_count().unwrap();
+                                    if op_arg_count != args {
+                                        return Err(KalmarError::UnexpectOpArgCount(
+                                            op,
+                                            op_arg_count,
+                                            args,
+                                        ));
+                                    }
                                     let v = decompile_expr(c)?;
                                     val = Expr::BinOp(BinOp::BitAnd, Box::new(val), Box::new(v));
                                 } else {
                                     while !matches!(
-                                        Op::try_from_primitive(c.peek().unwrap()).unwrap(),
+                                        Op::from_u32(c.peek()?)?,
                                         Op::CaseEq
                                             | Op::CaseNe
                                             | Op::CaseGt
@@ -254,9 +273,7 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
                                     break;
                                 }
                             }
-                            if Op::try_from_primitive(c.peek().unwrap()).unwrap()
-                                == Op::EndCaseGroup
-                            {
+                            if Op::from_u32(c.peek()?)? == Op::EndCaseGroup {
                                 c.seek(8);
                             }
                             case.push(Stmt::Case(val, Box::new(Stmt::Block(block))));
@@ -277,7 +294,7 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
                 };
                 let mut block = vec![];
                 while !matches!(
-                    Op::try_from_primitive(c.peek().unwrap()).unwrap(),
+                    Op::from_u32(c.peek()?)?,
                     Op::CaseEq
                         | Op::CaseNe
                         | Op::CaseGt
@@ -471,24 +488,24 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
             Box::new(Expr::UnOp(UnOp::Ampersand, Box::new(decompile_expr(c)?))),
         )),
         Op::Call => {
-            let addr = c.read_u32().unwrap();
+            let addr = c.read_u32()?;
             let mut args = vec![];
             for _ in 0..num_args {
-                args.push(decompile_expr(c).unwrap());
+                args.push(decompile_expr(c)?);
             }
             Stmt::Expr(Expr::FuncCall(Literal::Number(Number::Int(addr)), args))
         }
-        Op::Jump => Stmt::Jump(Literal::Number(Number::Int(c.read_u32().unwrap()))),
+        Op::Jump => Stmt::Jump(Literal::Number(Number::Int(c.read_u32()?))),
         Op::Thread => {
             let mut block = vec![];
-            while Op::try_from_primitive(c.peek().unwrap()).unwrap() != Op::EndThread {
+            while Op::from_u32(c.peek()?)? != Op::EndThread {
                 block.push(decompile_inst(c)?);
             }
             Stmt::Thread(Box::new(Stmt::Block(block)))
         }
         Op::ChildThread => {
             let mut block = vec![];
-            while Op::try_from_primitive(c.peek().unwrap()).unwrap() != Op::EndThread {
+            while Op::from_u32(c.peek()?)? != Op::EndThread {
                 block.push(decompile_inst(c)?);
             }
             Stmt::ChildThread(Box::new(Stmt::Block(block)))
@@ -538,21 +555,21 @@ fn decompile_inst(c: &mut Cur<&[u8]>) -> Result<Stmt, ()> {
             .to_string();
             let mut args = vec![];
             for _ in 0..num_args {
-                args.push(decompile_expr(c).unwrap());
+                args.push(decompile_expr(c)?);
             }
             Stmt::Expr(Expr::FuncCall(Literal::Identifier(func), args))
         }
-        Op::End => return Err(()),
+        Op::End => return Err(KalmarError::UnexpectedEndToken),
         e => panic!("{:?}", e),
     })
 }
 
-fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, ()> {
+fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, KalmarError> {
     let mut if_block = vec![];
     let mut else_stmt = None;
 
     loop {
-        let next_op = Op::try_from_primitive(c.peek().unwrap()).unwrap();
+        let next_op = Op::from_u32(c.peek()?)?;
         match next_op {
             Op::EndIf => {
                 c.seek(8);
@@ -562,7 +579,7 @@ fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, ()> {
                 c.seek(8);
 
                 if matches!(
-                    Op::try_from_primitive(c.peek().unwrap()).unwrap(),
+                    Op::from_u32(c.peek()?)?,
                     Op::IfEq
                         | Op::IfNe
                         | Op::IfGt
@@ -580,7 +597,7 @@ fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, ()> {
                 }
 
                 let mut block = vec![];
-                while Op::try_from_primitive(c.peek().unwrap()).unwrap() != Op::EndIf {
+                while Op::from_u32(c.peek()?)? != Op::EndIf {
                     block.push(decompile_inst(c)?);
                 }
 
@@ -592,10 +609,7 @@ fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, ()> {
                 break;
             }
             _ => {
-                while !matches!(
-                    Op::try_from_primitive(c.peek().unwrap()).unwrap(),
-                    Op::EndIf | Op::Else
-                ) {
+                while !matches!(Op::from_u32(c.peek()?)?, Op::EndIf | Op::Else) {
                     if_block.push(decompile_inst(c)?);
                 }
             }
@@ -607,8 +621,8 @@ fn decompile_if_stmt(c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, ()> {
     Ok(Stmt::IfElse(Box::new(if_stmt), else_stmt))
 }
 
-fn decompile_expr(c: &mut Cur<&[u8]>) -> Result<Expr, ()> {
-    let var = c.read_u32().unwrap() as i32;
+fn decompile_expr(c: &mut Cur<&[u8]>) -> Result<Expr, KalmarError> {
+    let var = c.read_u32()? as i32;
     Ok(if var <= -220000000 {
         Expr::Identifier(Literal::Number(Number::Float(
             (var + 230000000) as f32 / 1024.0,

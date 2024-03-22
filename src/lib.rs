@@ -1,8 +1,9 @@
+use error::KalmarError;
 use parser::Stmt;
 
 mod compiler;
 mod decompiler;
-//mod error;
+mod error;
 mod lexer;
 mod optimizer;
 mod parser;
@@ -88,7 +89,7 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn parse(mut self) -> Result<Self, ()> {
+    pub fn parse(mut self) -> Result<Self, KalmarError> {
         let mut parser = parser::Parser::new(self.input);
         match parser.parse(self.verbose) {
             Ok(s) => self.stmts = s,
@@ -97,7 +98,7 @@ impl<'a> Compiler<'a> {
         Ok(self)
     }
 
-    pub fn sem_check(self) -> Result<Self, ()> {
+    pub fn sem_check(self) -> Result<Self, KalmarError> {
         let mut sem = sem_checker::SemChecker::default();
         match sem.check_ast(&self.stmts) {
             Ok(_) => Ok(self),
@@ -113,7 +114,7 @@ impl<'a> Compiler<'a> {
     pub fn compile(mut self) -> Self {
         let mut compiler = compiler::Compiler::new(self.base_addr);
         compiler.add_syms(std::mem::take(&mut self.syms));
-        self.code = compiler.compile(&self.stmts);
+        self.code = compiler.compile(&self.stmts).unwrap();
         self
     }
 
@@ -184,7 +185,7 @@ pub struct Decompiler<'a> {
 }
 
 impl<'a> Decompiler<'a> {
-    pub fn parse(mut self) -> Result<Self, ()> {
+    pub fn parse(mut self) -> Result<Self, KalmarError> {
         match decompiler::decompile_script(self.input) {
             Ok(s) => self.stmts.push(s),
             Err(e) => return Err(e),
