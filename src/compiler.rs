@@ -214,7 +214,6 @@ impl Op {
 
 pub struct Compiler<'a> {
     syms: HashMap<&'a str, u32>,
-    labels: HashMap<String, u32>,
     num_labels: u32,
     base_addr: u32,
     unresolved_syms: Vec<(&'a str, u32)>,
@@ -231,7 +230,6 @@ impl<'a> Compiler<'a> {
     pub fn new(base_addr: u32) -> Self {
         Compiler {
             syms: HashMap::new(),
-            labels: HashMap::new(),
             num_labels: 0,
             base_addr,
             unresolved_syms: vec![],
@@ -293,7 +291,7 @@ impl<'a> Compiler<'a> {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
-                self.labels.insert(lbl.to_string(), self.num_labels);
+                self.syms.insert(lbl, self.num_labels);
                 add_op!(Label);
                 self.code.push(self.num_labels);
                 self.num_labels += 1;
@@ -304,8 +302,11 @@ impl<'a> Compiler<'a> {
                     _ => unreachable!(),
                 };
                 add_op!(Goto);
-                // TODO: handle unresolved labels
-                self.code.push(*self.labels.get(lbl).unwrap());
+                self.code
+                    .push(*self.syms.get(lbl.as_str()).unwrap_or_else(|| {
+                        self.unresolved_syms.push((&lbl, self.code.len() as u32));
+                        &0
+                    }))
             }
             Stmt::Loop(e, s) => {
                 add_op!(Loop);
