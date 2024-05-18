@@ -605,11 +605,12 @@ impl Parser {
         Ok(match self.tokens.pop() {
             Some(x) => x,
             None => {
-                let x = self.lexer.lex()?;
+                let x = self.lexer.lex().unwrap();
+                let x = x.first().unwrap();
                 if self.verbose {
                     println!("{:?}", x);
                 }
-                x
+                x.clone()
             }
         })
     }
