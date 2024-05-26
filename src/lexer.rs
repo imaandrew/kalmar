@@ -15,6 +15,7 @@ pub struct Token {
     pub kind: TokenKind,
     pub val: Option<Literal>,
     pub pos: usize,
+    pub len: usize,
 }
 
 #[derive(Copy, Clone, Display, Debug, EnumString, PartialEq, Eq)]
@@ -333,6 +334,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 _ => {
                     return Ok(self.create_token_literal(
                         TokenKind::Number,
+                        start,
                         Some(Literal::Number(Number::Int(0))),
                     ))
                 }
@@ -346,6 +348,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
             self.consume_decimal_digits();
             return Ok(self.create_token_literal(
                 TokenKind::Number,
+                start,
                 Some(Literal::Number(Number::Float(
                     self.literals.text[start..self.curr]
                         .parse()
@@ -356,6 +359,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
 
         Ok(self.create_token_literal(
             TokenKind::Number,
+            start,
             Some(Literal::Number(Number::Int(
                 u32::from_str_radix(&self.literals.text[start..self.curr], base)
                     .map_err(|_| KalmarError::IntParseError(String::new()))?,
@@ -391,16 +395,16 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         let text = &self.literals.text[start..self.curr];
 
         if let Ok(kind) = TokenKind::from_str(text) {
-            return Ok(self.create_token(kind));
+            return Ok(self.create_token_literal(kind, start, None));
         };
 
         Ok(if text == "true" {
-            self.create_token_literal(TokenKind::Boolean, Some(Literal::Boolean(true)))
+            self.create_token_literal(TokenKind::Boolean, start, Some(Literal::Boolean(true)))
         } else if text == "false" {
-            self.create_token_literal(TokenKind::Boolean, Some(Literal::Boolean(false)))
+            self.create_token_literal(TokenKind::Boolean, start, Some(Literal::Boolean(false)))
         } else {
             let idx = self.literals.add(&self.literals.text[start..self.curr]);
-            self.create_token_literal(TokenKind::Identifier, Some(Literal::Identifier(idx)))
+            self.create_token_literal(TokenKind::Identifier, start, Some(Literal::Identifier(idx)))
         })
     }
 
@@ -422,14 +426,20 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
     }
 
     fn create_token(&self, kind: TokenKind) -> Token {
-        self.create_token_literal(kind, None)
+        self.create_token_literal(kind, self.curr - 1, None)
     }
 
-    fn create_token_literal(&self, kind: TokenKind, literal: Option<Literal>) -> Token {
+    fn create_token_literal(
+        &self,
+        kind: TokenKind,
+        start: usize,
+        literal: Option<Literal>,
+    ) -> Token {
         Token {
             kind,
-            pos: self.curr,
             val: literal,
+            pos: start,
+            len: self.curr - start,
         }
     }
 }
