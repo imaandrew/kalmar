@@ -72,7 +72,6 @@ impl<'a> CompilerBuilder<'a> {
     pub fn build(&mut self) -> Compiler<'a> {
         Compiler {
             verbose: self.verbose,
-            input: self.input,
             tokens: vec![],
             literals: StringManager::new(self.input),
             stmts: vec![],
@@ -87,11 +86,11 @@ impl<'a> CompilerBuilder<'a> {
 pub struct SymbolIndex(u32);
 
 impl SymbolIndex {
-    pub fn new(idx: usize) -> Self {
+    fn new(idx: usize) -> Self {
         Self(idx as u32)
     }
 
-    pub fn get_idx(&self) -> usize {
+    fn get_idx(&self) -> usize {
         self.0 as usize
     }
 }
@@ -127,7 +126,6 @@ impl<'a> StringManager<'a> {
 
 pub struct Compiler<'a> {
     verbose: bool,
-    input: &'a str,
     tokens: Vec<Token>,
     literals: StringManager<'a>,
     stmts: Vec<Stmt>,
@@ -138,7 +136,7 @@ pub struct Compiler<'a> {
 
 impl<'a> Compiler<'a> {
     pub fn lex(mut self) -> Result<Self, KalmarError> {
-        let mut lexer = lexer::Lexer::new(self.input, &mut self.literals);
+        let mut lexer = lexer::Lexer::new(&mut self.literals);
         match lexer.lex() {
             Ok(t) => {
                 self.tokens = t;
