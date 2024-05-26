@@ -119,6 +119,8 @@ pub enum KalmarError {
     UndefinedFunction(String),
     #[error("referencing undefined symbol `{0}`")]
     UndefinedSymbol(String),
+    #[error("unexpected end of token stream")]
+    UnexpectedEndTokenStream,
 }
 
 #[derive(Debug)]

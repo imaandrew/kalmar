@@ -4,13 +4,13 @@ use std::{
     str::FromStr,
 };
 
-use crate::error::KalmarError;
+use crate::{error::KalmarError, StringManager, SymbolIndex};
 
 use std::string::ToString;
 use strum_macros::Display;
 use strum_macros::EnumString;
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Token {
     pub kind: TokenKind,
     pub val: Option<Literal>,
@@ -205,9 +205,9 @@ impl Neg for Number {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Literal {
-    Identifier(String),
+    Identifier(SymbolIndex),
     Number(Number),
     Boolean(bool),
 }
@@ -222,16 +222,18 @@ impl Display for Literal {
     }
 }
 
-pub struct Lexer {
+pub struct Lexer<'lexr, 'smgr> {
     data: Vec<char>,
+    literals: &'lexr mut StringManager<'smgr>,
     start: usize,
     curr: usize,
 }
 
-impl Lexer {
-    pub fn new(data: &str) -> Self {
+impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
+    pub fn new(data: &str, literals: &'lexr mut StringManager<'smgr>) -> Self {
         Lexer {
             data: data.chars().collect(),
+            literals,
             start: 0,
             curr: 0,
         }
@@ -352,7 +354,10 @@ impl Lexer {
         } else if text == "false" {
             self.create_token_literal(TokenKind::Boolean, Some(Literal::Boolean(false)))
         } else {
-            self.create_token_literal(TokenKind::Identifier, Some(Literal::Identifier(text)))
+            let idx = self
+                .literals
+                .add(&self.literals.text[self.start..self.curr]);
+            self.create_token_literal(TokenKind::Identifier, Some(Literal::Identifier(idx)))
         })
     }
 

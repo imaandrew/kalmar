@@ -4,6 +4,7 @@ use crate::{
     error::KalmarError,
     lexer::Literal,
     parser::{BinOp, Expr, Stmt, UnOp},
+    StringManager,
 };
 
 #[derive(Debug, PartialEq, Display, Copy, Clone)]
@@ -44,21 +45,17 @@ pub struct SemChecker<'a> {
     referenced_scripts: Vec<&'a str>,
     declared_labels: Vec<&'a str>,
     referenced_labels: Vec<&'a str>,
+    literals: &'a StringManager<'a>,
 }
 
-impl Default for SemChecker<'_> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SemChecker<'_> {
-    pub fn new() -> Self {
+impl<'a> SemChecker<'a> {
+    pub fn new(literals: &'a mut StringManager) -> Self {
         Self {
             declared_scripts: vec![],
             referenced_scripts: vec![],
             declared_labels: vec![],
             referenced_labels: vec![],
+            literals,
         }
     }
 }
@@ -79,34 +76,39 @@ impl<'a> SemChecker<'a> {
 
     fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), KalmarError> {
         match stmt {
-            Stmt::Script(i, s) => {
+            Stmt::Script(Literal::Identifier(i), s) => {
                 self.declared_labels.clear();
                 self.referenced_labels.clear();
                 let script = self
-                    .check_identifier_uniqueness(i, &self.declared_scripts)
+                    .check_identifier_uniqueness(
+                        self.literals.get(*i).unwrap(),
+                        &self.declared_scripts,
+                    )
                     .ok_or(KalmarError::RedeclaredScript(i.to_string()))?;
                 self.declared_scripts.push(script);
                 self.check_stmt_node(s)?;
                 self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels)?;
             }
             Stmt::Block(s) => self.check_nodes(s)?,
-            Stmt::Label(l) => {
+            Stmt::Label(Literal::Identifier(i)) => {
                 if self.declared_labels.len() >= 16 {
                     return Err(KalmarError::TooManyLabels);
                 }
+                let l = self.literals.get(*i).unwrap();
                 self.declared_labels.push(
-                    self.check_identifier_uniqueness(l, &self.declared_labels)
-                        .ok_or(KalmarError::RedeclaredLabel(l.to_string()))?,
+                    self.check_identifier_uniqueness(
+                        self.literals.get(*i).unwrap(),
+                        &self.declared_labels,
+                    )
+                    .ok_or(KalmarError::RedeclaredLabel(l.to_string()))?,
                 );
             }
-            Stmt::Goto(l) => match l {
-                Literal::Identifier(i) => {
-                    if !self.referenced_labels.contains(&i.as_str()) {
-                        self.referenced_labels.push(i);
-                    }
+            Stmt::Goto(Literal::Identifier(i)) => {
+                let l = self.literals.get(*i).unwrap();
+                if !self.referenced_labels.contains(&l) {
+                    self.referenced_labels.push(l);
                 }
-                _ => unreachable!(),
-            },
+            }
             Stmt::Loop(e, s) => {
                 if let Some(e) = e {
                     assert_types!(self.check_expr_node(e)?, Type::Integer, Type::Integer)?;
@@ -133,14 +135,12 @@ impl<'a> SemChecker<'a> {
                     self.check_stmt_node(e)?;
                 }
             }
-            Stmt::Jump(l) => match l {
-                Literal::Identifier(i) => {
-                    if !self.referenced_scripts.contains(&i.as_str()) {
-                        self.referenced_scripts.push(i);
-                    }
+            Stmt::Jump(Literal::Identifier(i)) => {
+                let l = self.literals.get(*i).unwrap();
+                if !self.referenced_scripts.contains(&l) {
+                    self.referenced_scripts.push(l);
                 }
-                _ => unreachable!(),
-            },
+            }
             Stmt::Thread(s) => self.check_stmt_node(s)?,
             Stmt::ChildThread(s) => self.check_stmt_node(s)?,
             Stmt::Expr(e) => assert_types!(
@@ -163,6 +163,7 @@ impl<'a> SemChecker<'a> {
                 self.check_stmt_node(s)?;
             }
             Stmt::Return | Stmt::BreakCase | Stmt::BreakLoop | Stmt::Empty => (),
+            _ => unreachable!(),
         };
 
         Ok(())
@@ -339,21 +340,12 @@ impl<'a> SemChecker<'a> {
         })
     }
 
-    fn check_identifier_uniqueness(
-        &self,
-        ident: &'a Literal,
-        declared: &[&'a str],
-    ) -> Option<&'a str> {
-        let name = match ident {
-            Literal::Identifier(i) => i,
-            _ => unreachable!(),
-        };
-
-        if declared.contains(&name.as_str()) {
+    fn check_identifier_uniqueness(&self, ident: &'a str, declared: &[&'a str]) -> Option<&'a str> {
+        if declared.contains(&ident) {
             return None;
         }
 
-        Some(name)
+        Some(ident)
     }
 
     fn verify_referenced_identifiers(

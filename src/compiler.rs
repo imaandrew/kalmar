@@ -7,6 +7,7 @@ use strum_macros::Display;
 use crate::error::KalmarError;
 use crate::lexer::Literal;
 use crate::parser::{BinOp, Expr, Stmt, UnOp};
+use crate::StringManager;
 
 #[derive(TryFromPrimitive, Debug, PartialEq, Eq, Display)]
 #[repr(u32)]
@@ -212,23 +213,19 @@ impl Op {
     }
 }
 
-pub struct Compiler<'a> {
-    syms: HashMap<&'a str, u32>,
+pub struct Compiler<'cmplr, 'smgr> {
+    literals: &'cmplr mut StringManager<'smgr>,
+    syms: HashMap<&'cmplr str, u32>,
     num_labels: u32,
     base_addr: u32,
-    unresolved_syms: Vec<(&'a str, u32)>,
+    unresolved_syms: Vec<(&'cmplr str, u32)>,
     code: Vec<u32>,
 }
 
-impl Default for Compiler<'_> {
-    fn default() -> Self {
-        Self::new(0)
-    }
-}
-
-impl<'a> Compiler<'a> {
-    pub fn new(base_addr: u32) -> Self {
+impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
+    pub fn new(base_addr: u32, literals: &'cmplr mut StringManager<'smgr>) -> Self {
         Compiler {
+            literals,
             syms: HashMap::new(),
             num_labels: 0,
             base_addr,
@@ -237,11 +234,11 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn add_syms(&mut self, syms: Vec<(&'a str, u32)>) {
+    pub fn add_syms(&mut self, syms: Vec<(&'cmplr str, u32)>) {
         self.syms.extend(syms)
     }
 
-    pub fn compile(&mut self, stmts: &'a Vec<Stmt>) -> Result<Vec<u32>, KalmarError> {
+    pub fn compile(&mut self, stmts: &'cmplr Vec<Stmt>) -> Result<Vec<u32>, KalmarError> {
         for s in stmts {
             self.compile_stmt(s)?;
         }
@@ -257,7 +254,7 @@ impl<'a> Compiler<'a> {
         Ok(std::mem::take(&mut self.code))
     }
 
-    fn compile_stmt(&mut self, stmt: &'a Stmt) -> Result<(), KalmarError> {
+    fn compile_stmt(&mut self, stmt: &'cmplr Stmt) -> Result<(), KalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -273,8 +270,10 @@ impl<'a> Compiler<'a> {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
-                self.syms
-                    .insert(l, 4 * self.code.len() as u32 + self.base_addr);
+                self.syms.insert(
+                    self.literals.get(*l).unwrap(),
+                    4 * self.code.len() as u32 + self.base_addr,
+                );
                 self.compile_stmt(s)?;
                 add_op!(End);
             }
@@ -291,22 +290,22 @@ impl<'a> Compiler<'a> {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
                 };
-                self.syms.insert(lbl, self.num_labels);
+                self.syms
+                    .insert(self.literals.get(*lbl).unwrap(), self.num_labels);
                 add_op!(Label);
                 self.code.push(self.num_labels);
                 self.num_labels += 1;
             }
             Stmt::Goto(n) => {
                 let lbl = match n {
-                    Literal::Identifier(i) => i,
+                    Literal::Identifier(i) => self.literals.get(*i).unwrap(),
                     _ => unreachable!(),
                 };
                 add_op!(Goto);
-                self.code
-                    .push(*self.syms.get(lbl.as_str()).unwrap_or_else(|| {
-                        self.unresolved_syms.push((&lbl, self.code.len() as u32));
-                        &0
-                    }))
+                self.code.push(*self.syms.get(lbl).unwrap_or_else(|| {
+                    self.unresolved_syms.push((lbl, self.code.len() as u32));
+                    &0
+                }))
             }
             Stmt::Loop(e, s) => {
                 add_op!(Loop);
@@ -440,7 +439,7 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    fn compile_expr(&mut self, expr: &'a Expr) -> Result<(), KalmarError> {
+    fn compile_expr(&mut self, expr: &'cmplr Expr) -> Result<(), KalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -452,11 +451,11 @@ impl<'a> Compiler<'a> {
             Expr::Identifier(lit) => match lit {
                 Literal::Number(n) => self.code.push(n.as_u32()),
                 Literal::Identifier(i) => {
-                    self.code
-                        .push(*self.syms.get(i.as_str()).unwrap_or_else(|| {
-                            self.unresolved_syms.push((i, self.code.len() as u32));
-                            &0
-                        }))
+                    let i = self.literals.get(*i).unwrap();
+                    self.code.push(*self.syms.get(i).unwrap_or_else(|| {
+                        self.unresolved_syms.push((i, self.code.len() as u32));
+                        &0
+                    }))
                 }
                 Literal::Boolean(b) => self.code.push(if *b { 1 } else { 0 }),
             },
@@ -575,7 +574,7 @@ impl<'a> Compiler<'a> {
                     }
                     Expr::Identifier(i) if matches!(i, Literal::Identifier(_)) => {
                         if let Literal::Identifier(i) = i {
-                            match i.as_str() {
+                            match self.literals.get(*i).unwrap() {
                                 "Buffer" => add_op!(BufPeek),
                                 "FBuffer" => add_op!(FBufPeek),
                                 _ => panic!(),
@@ -595,7 +594,7 @@ impl<'a> Compiler<'a> {
                     }
                     Expr::FuncCall(i, a) if matches!(i, Literal::Identifier(_)) => {
                         if let Literal::Identifier(s) = i {
-                            let f = self.get_func(s, true).unwrap();
+                            let f = self.get_func(self.literals.get(*s).unwrap(), true).unwrap();
                             self.code.push(f.0);
                             self.code.push(f.1 as u32);
                             for arg in a {
@@ -655,8 +654,14 @@ impl<'a> Compiler<'a> {
                             break;
                         };
                         let op = match r.get_literal() {
-                            Some(Literal::Identifier(s)) if s == "Buffer" => Op::BufRead1 as usize,
-                            Some(Literal::Identifier(s)) if s == "FBuffer" => {
+                            Some(Literal::Identifier(s))
+                                if self.literals.get(s).unwrap() == "Buffer" =>
+                            {
+                                Op::BufRead1 as usize
+                            }
+                            Some(Literal::Identifier(s))
+                                if self.literals.get(s).unwrap() == "FBuffer" =>
+                            {
                                 Op::FBufRead1 as usize
                             }
                             _ => panic!(),
@@ -680,7 +685,7 @@ impl<'a> Compiler<'a> {
             },
             Expr::Array(ident, index) => {
                 let ident = match ident {
-                    Literal::Identifier(i) => i,
+                    Literal::Identifier(i) => self.literals.get(*i).unwrap(),
                     _ => unreachable!(),
                 };
 
@@ -694,7 +699,7 @@ impl<'a> Compiler<'a> {
             Expr::FuncCall(func, args) => {
                 let addr = match func {
                     Literal::Identifier(i) => self
-                        .get_func(i, false)
+                        .get_func(self.literals.get(*i).unwrap(), false)
                         .ok_or_else(|| KalmarError::UndefinedFunction(i.to_string()))?,
                     _ => unreachable!(),
                 };
@@ -715,11 +720,11 @@ impl<'a> Compiler<'a> {
             }
             Expr::ArrayAssign(ident, expr) => {
                 let ident = match ident {
-                    Literal::Identifier(i) => i,
+                    Literal::Identifier(i) => self.literals.get(*i).unwrap(),
                     _ => unreachable!(),
                 };
 
-                match ident.as_str() {
+                match ident {
                     "Buffer" => add_op!(UseBuf),
                     "FBuffer" => add_op!(UseFBuf),
                     "Array" => add_op!(UseArray),

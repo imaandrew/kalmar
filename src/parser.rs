@@ -2,7 +2,8 @@ use std::fmt::Display;
 
 use crate::{
     error::KalmarError,
-    lexer::{Lexer, Literal, Token, TokenKind},
+    lexer::{Literal, Token, TokenKind},
+    StringManager,
 };
 
 #[derive(Debug)]
@@ -293,9 +294,9 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn get_literal(&self) -> Option<&Literal> {
+    pub fn get_literal(&self) -> Option<Literal> {
         match &self {
-            Self::Identifier(l) => Some(l),
+            Self::Identifier(l) => Some(*l),
             _ => None,
         }
     }
@@ -321,18 +322,20 @@ impl Display for Expr {
     }
 }
 
-pub struct Parser {
-    lexer: Lexer,
-    tokens: Vec<Token>,
+pub struct Parser<'parsr, 'smgr> {
+    tokens: &'parsr Vec<Token>,
+    literals: &'parsr mut StringManager<'smgr>,
+    curr: usize,
     verbose: bool,
     parsing_func_args: bool,
 }
 
-impl Parser {
-    pub fn new(data: &str) -> Self {
+impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
+    pub fn new(tokens: &'parsr Vec<Token>, literals: &'parsr mut StringManager<'smgr>) -> Self {
         Parser {
-            lexer: Lexer::new(data),
-            tokens: vec![],
+            tokens,
+            literals,
+            curr: 0,
             verbose: false,
             parsing_func_args: false,
         }
@@ -343,11 +346,11 @@ impl Parser {
         self.verbose = verbose;
         self.skip_newlines()?;
         loop {
-            if self.lexer.at_end() {
+            if self.at_end() {
                 break;
             }
             stmts.push(self.declaration()?);
-            if !self.lexer.at_end() {
+            if !self.at_end() {
                 self.assert(TokenKind::Newline)?;
             }
             self.skip_newlines()?;
@@ -402,10 +405,10 @@ impl Parser {
             TokenKind::KwSwitch => self.switch_statement(),
             TokenKind::Identifier => {
                 if self.peek(TokenKind::Colon)? {
-                    self.tokens.push(t);
+                    self.rewind()?;
                     return self.label_statement();
                 }
-                self.tokens.push(t);
+                self.rewind()?;
                 Ok(Stmt::Expr(self.expr(0)?))
             }
             _ => Err(KalmarError::ExpectedStmt(t.kind)),
@@ -421,10 +424,10 @@ impl Parser {
     }
 
     fn label_statement(&mut self) -> Result<Stmt, KalmarError> {
-        let ident = self.consume(TokenKind::Identifier)?;
+        let lbl_idx = self.consume(TokenKind::Identifier)?.val.unwrap();
         self.assert(TokenKind::Colon)?;
 
-        Ok(Stmt::Label(ident.val.unwrap()))
+        Ok(Stmt::Label(lbl_idx))
     }
 
     fn loop_statement(&mut self) -> Result<Stmt, KalmarError> {
@@ -506,7 +509,7 @@ impl Parser {
     }
 
     fn expr(&mut self, min_prec: u8) -> Result<Expr, KalmarError> {
-        let t = self.pop()?;
+        let t = *self.pop()?;
         let mut left = match t.kind {
             TokenKind::Number | TokenKind::Boolean => Expr::Identifier(t.val.unwrap()),
             TokenKind::Identifier => match self.kind()? {
@@ -558,23 +561,23 @@ impl Parser {
         };
 
         loop {
-            let t = self.pop()?;
-            if self.parsing_func_args && t.kind == TokenKind::Comma {
-                self.tokens.push(t);
+            let t = self.pop()?.kind;
+            if self.parsing_func_args && t == TokenKind::Comma {
+                self.rewind()?;
                 break;
             }
-            let op = match BinOp::try_from(t.kind) {
+            let op = match BinOp::try_from(t) {
                 Ok(op) => op,
                 Err(e) => {
                     // TODO: ew
                     if matches!(
-                        t.kind,
+                        t,
                         TokenKind::LBrace
                             | TokenKind::RBracket
                             | TokenKind::RParen
                             | TokenKind::Newline
                     ) {
-                        self.tokens.push(t);
+                        self.rewind()?;
                         break;
                     }
                     return Err(e);
@@ -582,16 +585,19 @@ impl Parser {
             };
 
             if op.precedence().0 < min_prec {
-                self.tokens.push(t);
+                self.rewind()?;
                 break;
             }
 
             let right = self.expr(op.precedence().1)?;
             if op == BinOp::Assign {
-                if let Expr::Identifier(Literal::Identifier(s)) = &left {
-                    if matches!(s.as_str(), "Buffer" | "FBuffer" | "Array" | "FlagArray") {
-                        left =
-                            Expr::ArrayAssign(Literal::Identifier(s.to_string()), Box::new(right));
+                if let Expr::Identifier(lit @ Literal::Identifier(s)) = &left {
+                    let s = self.literals.get(*s).unwrap();
+                    if matches!(
+                        s.to_string().as_str(),
+                        "Buffer" | "FBuffer" | "Array" | "FlagArray"
+                    ) {
+                        left = Expr::ArrayAssign(*lit, Box::new(right));
                         continue;
                     }
                 }
@@ -601,28 +607,26 @@ impl Parser {
         Ok(left)
     }
 
-    fn pop(&mut self) -> Result<Token, KalmarError> {
-        Ok(match self.tokens.pop() {
-            Some(x) => x,
-            None => {
-                let x = self.lexer.lex().unwrap();
-                let x = x.first().unwrap();
-                if self.verbose {
-                    println!("{:?}", x);
-                }
-                x.clone()
-            }
-        })
+    fn bound_check_tokens(&self) -> Result<(), KalmarError> {
+        if self.curr >= self.tokens.len() {
+            return Err(KalmarError::UnexpectedEndTokenStream);
+        }
+        Ok(())
+    }
+
+    fn pop(&mut self) -> Result<&Token, KalmarError> {
+        self.bound_check_tokens()?;
+        self.curr += 1;
+        Ok(self.tokens.get(self.curr).unwrap())
     }
 
     fn kind(&mut self) -> Result<TokenKind, KalmarError> {
-        let t = self.pop()?;
-        let kind = t.kind;
-        self.tokens.push(t);
-        Ok(kind)
+        self.bound_check_tokens()?;
+        self.curr += 1;
+        Ok(self.tokens.get(self.curr).unwrap().kind)
     }
 
-    fn consume(&mut self, kind: TokenKind) -> Result<Token, KalmarError> {
+    fn consume(&mut self, kind: TokenKind) -> Result<&Token, KalmarError> {
         let t = self.pop()?;
         if t.kind == kind {
             return Ok(t);
@@ -632,23 +636,21 @@ impl Parser {
     }
 
     fn peek(&mut self, kind: TokenKind) -> Result<bool, KalmarError> {
-        let tok = self.pop()?;
-        let ret = tok.kind == kind;
-        self.tokens.push(tok);
-        Ok(ret)
+        self.bound_check_tokens()?;
+        let tok = self.tokens.get(self.curr).unwrap();
+        Ok(tok.kind == kind)
     }
 
     fn peek_over_newlines(&mut self, kind: TokenKind) -> Result<bool, KalmarError> {
-        let mut tok = self.pop()?;
-        let mut toks = vec![];
-        while tok.kind == TokenKind::Newline {
-            toks.push(tok);
-            tok = self.pop()?;
+        let mut i = self.curr;
+        while let Some(t) = self.tokens.get(i) {
+            if t.kind != TokenKind::Newline {
+                return Ok(t.kind == kind);
+            }
+            i += 1;
         }
-        let ret = tok.kind == kind;
-        self.tokens.push(tok);
-        self.tokens.append(&mut toks);
-        Ok(ret)
+
+        Err(KalmarError::UnexpectedEndTokenStream)
     }
 
     fn assert(&mut self, kind: TokenKind) -> Result<(), KalmarError> {
@@ -661,13 +663,21 @@ impl Parser {
     }
 
     fn skip_newlines(&mut self) -> Result<(), KalmarError> {
-        loop {
-            let t = self.pop()?;
-            if t.kind != TokenKind::Newline {
-                self.tokens.push(t);
-                break;
-            }
+        while self.kind()? == TokenKind::Newline {
+            self.pop()?;
         }
         Ok(())
+    }
+
+    fn rewind(&mut self) -> Result<(), KalmarError> {
+        if self.curr > 0 {
+            self.curr -= 1;
+            return Ok(());
+        }
+        Err(KalmarError::CursorOutOfBounds(0, 0))
+    }
+
+    fn at_end(&self) -> bool {
+        self.curr >= self.tokens.len()
     }
 }

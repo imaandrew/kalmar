@@ -1,4 +1,6 @@
 use error::KalmarError;
+use indexmap::IndexSet;
+use lexer::Token;
 use parser::Stmt;
 
 mod compiler;
@@ -71,6 +73,8 @@ impl<'a> CompilerBuilder<'a> {
         Compiler {
             verbose: self.verbose,
             input: self.input,
+            tokens: vec![],
+            literals: StringManager::new(self.input),
             stmts: vec![],
             base_addr: self.base_addr,
             code: vec![],
@@ -79,9 +83,53 @@ impl<'a> CompilerBuilder<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct SymbolIndex(u32);
+
+impl SymbolIndex {
+    pub fn new(idx: usize) -> Self {
+        Self(idx as u32)
+    }
+
+    pub fn get_idx(&self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl std::fmt::Display for SymbolIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", self.0)
+    }
+}
+
+#[derive(Default)]
+struct StringManager<'a> {
+    strings: IndexSet<&'a str>,
+    text: &'a str,
+}
+
+impl<'a> StringManager<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            strings: IndexSet::new(),
+            text,
+        }
+    }
+
+    fn add(&mut self, lit: &'a str) -> SymbolIndex {
+        SymbolIndex::new(self.strings.insert_full(lit).0)
+    }
+
+    fn get(&self, idx: SymbolIndex) -> Option<&'a str> {
+        self.strings.get_index(idx.get_idx()).copied()
+    }
+}
+
 pub struct Compiler<'a> {
     verbose: bool,
     input: &'a str,
+    tokens: Vec<Token>,
+    literals: StringManager<'a>,
     stmts: Vec<Stmt>,
     base_addr: u32,
     code: Vec<u32>,
@@ -89,8 +137,19 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
+    pub fn lex(mut self) -> Result<Self, KalmarError> {
+        let mut lexer = lexer::Lexer::new(self.input, &mut self.literals);
+        match lexer.lex() {
+            Ok(t) => {
+                self.tokens = t;
+            }
+            Err(e) => e.iter().for_each(|e| println!("{}", e)),
+        }
+        Ok(self)
+    }
+
     pub fn parse(mut self) -> Result<Self, KalmarError> {
-        let mut parser = parser::Parser::new(self.input);
+        let mut parser = parser::Parser::new(&self.tokens, &mut self.literals);
         match parser.parse(self.verbose) {
             Ok(s) => self.stmts = s,
             Err(e) => return Err(e),
@@ -98,8 +157,8 @@ impl<'a> Compiler<'a> {
         Ok(self)
     }
 
-    pub fn sem_check(self) -> Result<Self, KalmarError> {
-        let mut sem = sem_checker::SemChecker::default();
+    pub fn sem_check(mut self) -> Result<Self, KalmarError> {
+        let mut sem = sem_checker::SemChecker::new(&mut self.literals);
         match sem.check_ast(&self.stmts) {
             Ok(_) => Ok(self),
             Err(e) => Err(e),
@@ -112,7 +171,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile(mut self) -> Self {
-        let mut compiler = compiler::Compiler::new(self.base_addr);
+        let mut compiler = compiler::Compiler::new(self.base_addr, &mut self.literals);
         compiler.add_syms(std::mem::take(&mut self.syms));
         self.code = compiler.compile(&self.stmts).unwrap();
         self
@@ -167,6 +226,7 @@ impl<'a> DecompilerBuilder<'a> {
 
     pub fn build(&mut self) -> Decompiler<'a> {
         Decompiler {
+            literals: StringManager::new(""),
             verbose: self.verbose,
             input: self.input,
             stmts: vec![],
@@ -177,6 +237,7 @@ impl<'a> DecompilerBuilder<'a> {
 }
 
 pub struct Decompiler<'a> {
+    literals: StringManager<'a>,
     verbose: bool,
     input: &'a [u8],
     stmts: Vec<Stmt>,
@@ -186,7 +247,8 @@ pub struct Decompiler<'a> {
 
 impl<'a> Decompiler<'a> {
     pub fn parse(mut self) -> Result<Self, KalmarError> {
-        match decompiler::decompile_script(self.input) {
+        let mut de = decompiler::Decompiler::new(&mut self.literals);
+        match de.decompile_script(self.input) {
             Ok(s) => self.stmts.push(s),
             Err(e) => return Err(e),
         }
