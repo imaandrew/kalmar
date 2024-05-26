@@ -253,7 +253,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                     while self.peek() != '\n' && self.peek() != '\0' {
                         self.next();
                     }
-                    self.lex_token()
+                    Ok(self.create_token(TokenKind::Whitespace))
                 } else {
                     self.next();
                     while self.peek() != '*' || self.peek_over() != '/' {
@@ -261,7 +261,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                     }
                     self.next();
                     self.next();
-                    self.lex_token()
+                    Ok(self.create_token(TokenKind::Whitespace))
                 }
             }
             '=' | '!' | '>' | '<' | '+' | '-' | '*' | '/' | '%' | '|' | '&' | '.' => {
@@ -274,10 +274,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 }
             }
             ' ' | '\r' | '\t' => Ok(self.create_token(TokenKind::Whitespace)),
-            '\n' => {
-                let t = self.create_token(TokenKind::Newline);
-                Ok(t)
-            }
+            '\n' => Ok(self.create_token(TokenKind::Newline)),
             _ if c.is_ascii_digit() => self.number(c),
             _ if c.is_alphabetic() || c == '_' => Ok(self.identifier()?),
             _ => Err(KalmarError::UnexpectedChar(c)),
