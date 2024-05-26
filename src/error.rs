@@ -121,6 +121,8 @@ pub enum KalmarError {
     UndefinedSymbol(String),
     #[error("unexpected end of token stream")]
     UnexpectedEndTokenStream,
+    #[error("base prefix `{0}` missing number")]
+    BaseMissingNumber(String),
 }
 
 #[derive(Debug)]

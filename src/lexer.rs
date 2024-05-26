@@ -290,19 +290,31 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                     base = 2;
                     self.next();
                     start += 1;
-                    if !self.consume_decimal_digits() {}
+                    if !self.consume_decimal_digits() {
+                        return Err(KalmarError::BaseMissingNumber(String::from(
+                            &self.literals.text[start..self.curr],
+                        )));
+                    }
                 }
                 'o' => {
                     base = 8;
                     self.next();
                     start += 1;
-                    if !self.consume_decimal_digits() {}
+                    if !self.consume_decimal_digits() {
+                        return Err(KalmarError::BaseMissingNumber(String::from(
+                            &self.literals.text[start..self.curr],
+                        )));
+                    }
                 }
                 'x' => {
                     base = 16;
                     self.next();
                     start += 1;
-                    if !self.consume_hex_digits() {}
+                    if !self.consume_hex_digits() {
+                        return Err(KalmarError::BaseMissingNumber(String::from(
+                            &self.literals.text[start..self.curr],
+                        )));
+                    }
                 }
                 '0'..='9' => {
                     self.consume_decimal_digits();
@@ -327,9 +339,11 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 TokenKind::Number,
                 start,
                 Some(Literal::Number(Number::Float(
-                    self.literals.text[start..self.curr]
-                        .parse()
-                        .map_err(|_| KalmarError::IntParseError(String::new()))?,
+                    self.literals.text[start..self.curr].parse().map_err(|_| {
+                        KalmarError::IntParseError(String::from(
+                            &self.literals.text[start..self.curr],
+                        ))
+                    })?,
                 ))),
             ));
         }
@@ -338,8 +352,9 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
             TokenKind::Number,
             start,
             Some(Literal::Number(Number::Int(
-                u32::from_str_radix(&self.literals.text[start..self.curr], base)
-                    .map_err(|_| KalmarError::IntParseError(String::new()))?,
+                u32::from_str_radix(&self.literals.text[start..self.curr], base).map_err(|_| {
+                    KalmarError::IntParseError(String::from(&self.literals.text[start..self.curr]))
+                })?,
             ))),
         ))
     }
