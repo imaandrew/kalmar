@@ -225,7 +225,6 @@ impl Display for Literal {
 pub struct Lexer<'lexr, 'smgr> {
     data: Vec<char>,
     literals: &'lexr mut StringManager<'smgr>,
-    start: usize,
     curr: usize,
 }
 
@@ -234,7 +233,6 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         Lexer {
             data: data.chars().collect(),
             literals,
-            start: 0,
             curr: 0,
         }
     }
@@ -243,7 +241,6 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         let mut tokens = vec![];
         let mut err = vec![];
         while !self.at_end() {
-            self.start = self.curr;
             match self.lex_token() {
                 Ok(t) if t.kind == TokenKind::Whitespace => (),
                 Ok(t) => tokens.push(t),
@@ -262,25 +259,30 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
     fn lex_token(&mut self) -> Result<Token, KalmarError> {
         let c = self.next();
         match c {
-            '(' | ')' | '{' | '}' | '[' | ']' | ':' | ',' => {
-                Ok(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
+            '(' => Ok(self.create_token(TokenKind::LParen)),
+            ')' => Ok(self.create_token(TokenKind::RParen)),
+            '{' => Ok(self.create_token(TokenKind::LBrace)),
+            '}' => Ok(self.create_token(TokenKind::RBrace)),
+            '[' => Ok(self.create_token(TokenKind::LBracket)),
+            ']' => Ok(self.create_token(TokenKind::RBracket)),
+            ':' => Ok(self.create_token(TokenKind::Colon)),
+            ',' => Ok(self.create_token(TokenKind::Comma)),
+            '/' if matches!(self.peek(), '/' | '*') => {
+                if self.peek() == '/' {
+                    while self.peek() != '\n' && self.peek() != '\0' {
+                        self.next();
+                    }
+                    self.lex_token()
+                } else {
+                    self.next();
+                    while self.peek() != '*' || self.peek_over() != '/' {
+                        self.next();
+                    }
+                    self.curr += 2;
+                    self.lex_token()
+                }
             }
             '=' | '!' | '>' | '<' | '+' | '-' | '*' | '/' | '%' | '|' | '&' | '.' => {
-                if c == '/' {
-                    if self.peek() == '/' {
-                        while self.peek() != '\n' && self.peek() != '\0' {
-                            self.next();
-                        }
-                        return self.lex_token();
-                    } else if self.peek() == '*' {
-                        self.next();
-                        while self.peek() != '*' || self.peek_over() != '/' {
-                            self.next();
-                        }
-                        self.curr += 2;
-                        return self.lex_token();
-                    }
-                }
                 let x = format!("{}{}", c, self.peek());
                 if let Ok(kind) = TokenKind::from_str(&x) {
                     self.curr += 1;
@@ -294,58 +296,100 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 let t = self.create_token(TokenKind::Newline);
                 Ok(t)
             }
-            _ if c.is_alphanumeric() || c == '_' => Ok(self.identifier()?),
+            _ if c.is_ascii_digit() => self.number(c),
+            _ if c.is_alphabetic() || c == '_' => Ok(self.identifier()?),
             _ => Err(KalmarError::UnexpectedChar(c)),
         }
     }
 
-    fn identifier(&mut self) -> Result<Token, KalmarError> {
-        while !self.at_end()
-            && (self.peek().is_alphanumeric()
-                || self.peek() == '_'
-                || (self.peek() == '.' && self.peek_over() != '.'))
-        {
+    fn number(&mut self, c: char) -> Result<Token, KalmarError> {
+        let mut base = 10;
+        let mut start = self.curr - 1;
+        if c == '0' {
+            match self.peek() {
+                'b' => {
+                    base = 2;
+                    self.next();
+                    start += 1;
+                    if !self.consume_decimal_digits() {}
+                }
+                'o' => {
+                    base = 8;
+                    self.next();
+                    start += 1;
+                    if !self.consume_decimal_digits() {}
+                }
+                'x' => {
+                    base = 16;
+                    self.next();
+                    start += 1;
+                    if !self.consume_hex_digits() {}
+                }
+                '0'..='9' => {
+                    self.consume_decimal_digits();
+                }
+                '.' => (),
+                _ => {
+                    return Ok(self.create_token_literal(
+                        TokenKind::Number,
+                        Some(Literal::Number(Number::Int(0))),
+                    ))
+                }
+            }
+        } else {
+            self.consume_decimal_digits();
+        }
+
+        if self.peek() == '.' && self.peek_over() != '.' {
             self.next();
-        }
-
-        let text = self.data[self.start..self.curr].iter().collect::<String>();
-
-        if text.contains('.') {
-            if let Ok(num) = text.parse() {
-                return Ok(self.create_token_literal(
-                    TokenKind::Number,
-                    Some(Literal::Number(Number::Float(num))),
-                ));
-            }
-        }
-
-        if text.chars().next().unwrap().is_numeric() {
-            if text.len() < 3 {
-                return Ok(self.create_token_literal(
-                    TokenKind::Number,
-                    Some(Literal::Number(Number::Int(
-                        text.parse().map_err(|_| KalmarError::IntParseError(text))?,
-                    ))),
-                ));
-            }
-
-            let base = match &text[..2] {
-                "0b" => 2,
-                "0o" => 8,
-                "0x" => 16,
-                _ => 10,
-            };
-
+            self.consume_decimal_digits();
             return Ok(self.create_token_literal(
                 TokenKind::Number,
-                Some(Literal::Number(Number::Int(
-                    u32::from_str_radix(if base != 10 { &text[2..] } else { &text }, base)
-                        .map_err(|_| KalmarError::IntParseError(text))?,
+                Some(Literal::Number(Number::Float(
+                    self.literals.text[start..self.curr]
+                        .parse()
+                        .map_err(|_| KalmarError::IntParseError(String::new()))?,
                 ))),
             ));
         }
 
-        if let Ok(kind) = TokenKind::from_str(&text) {
+        Ok(self.create_token_literal(
+            TokenKind::Number,
+            Some(Literal::Number(Number::Int(
+                u32::from_str_radix(&self.literals.text[start..self.curr], base)
+                    .map_err(|_| KalmarError::IntParseError(String::new()))?,
+            ))),
+        ))
+    }
+
+    fn consume_decimal_digits(&mut self) -> bool {
+        let mut non_empty = true;
+        while self.peek().is_ascii_digit() {
+            self.next();
+            non_empty = false;
+        }
+        non_empty
+    }
+
+    fn consume_hex_digits(&mut self) -> bool {
+        let mut non_empty = true;
+        while self.peek().is_ascii_hexdigit() {
+            self.next();
+            non_empty = false;
+        }
+        non_empty
+    }
+
+    fn identifier(&mut self) -> Result<Token, KalmarError> {
+        let start = self.curr - 1;
+
+        while self.peek().is_alphabetic() || self.peek() == '_' {
+            self.next();
+        }
+
+        let text = &self.literals.text[start..self.curr];
+
+        if let Ok(kind) = TokenKind::from_str(text) {
             return Ok(self.create_token(kind));
         };
 
@@ -354,9 +398,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         } else if text == "false" {
             self.create_token_literal(TokenKind::Boolean, Some(Literal::Boolean(false)))
         } else {
-            let idx = self
-                .literals
-                .add(&self.literals.text[self.start..self.curr]);
+            let idx = self.literals.add(&self.literals.text[start..self.curr]);
             self.create_token_literal(TokenKind::Identifier, Some(Literal::Identifier(idx)))
         })
     }
