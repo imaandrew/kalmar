@@ -1,5 +1,4 @@
 use std::{
-    fmt::Display,
     ops::{Add, BitAnd, Div, Mul, Neg, Rem, Sub},
     str::FromStr,
 };
@@ -122,19 +121,10 @@ pub enum TokenKind {
     Eof,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Display)]
 pub enum Number {
     Int(u32),
     Float(f32),
-}
-
-impl Display for Number {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Number::Int(x) => write!(f, "{}", x),
-            Number::Float(x) => write!(f, "{}", x),
-        }
-    }
 }
 
 impl Number {
@@ -206,21 +196,11 @@ impl Neg for Number {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Display)]
 pub enum Literal {
     Identifier(SymbolIndex),
     Number(Number),
     Boolean(bool),
-}
-
-impl Display for Literal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Literal::Identifier(s) => write!(f, "{}", s),
-            Literal::Number(n) => write!(f, "{}", n),
-            Literal::Boolean(b) => write!(f, "{}", b),
-        }
-    }
 }
 
 pub struct Lexer<'lexr, 'smgr> {
