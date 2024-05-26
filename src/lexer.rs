@@ -229,9 +229,9 @@ pub struct Lexer<'lexr, 'smgr> {
 }
 
 impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
-    pub fn new(data: &str, literals: &'lexr mut StringManager<'smgr>) -> Self {
+    pub fn new(literals: &'lexr mut StringManager<'smgr>) -> Self {
         Lexer {
-            data: data.chars().collect(),
+            data: literals.text.chars().collect(),
             literals,
             curr: 0,
         }
@@ -278,14 +278,15 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                     while self.peek() != '*' || self.peek_over() != '/' {
                         self.next();
                     }
-                    self.curr += 2;
+                    self.next();
+                    self.next();
                     self.lex_token()
                 }
             }
             '=' | '!' | '>' | '<' | '+' | '-' | '*' | '/' | '%' | '|' | '&' | '.' => {
                 let x = format!("{}{}", c, self.peek());
                 if let Ok(kind) = TokenKind::from_str(&x) {
-                    self.curr += 1;
+                    self.next();
                     Ok(self.create_token(kind))
                 } else {
                     Ok(self.create_token(TokenKind::from_str(&c.to_string()).unwrap()))
