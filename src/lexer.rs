@@ -13,7 +13,8 @@ use strum_macros::EnumString;
 pub struct Token {
     pub kind: TokenKind,
     pub val: Option<Literal>,
-    pub pos: usize,
+    pub col: usize,
+    pub line: usize,
     pub len: usize,
 }
 
@@ -207,6 +208,8 @@ pub struct Lexer<'lexr, 'smgr> {
     data: Vec<char>,
     literals: &'lexr mut StringManager<'smgr>,
     curr: usize,
+    line: usize,
+    col: isize,
 }
 
 impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
@@ -215,6 +218,8 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
             data: literals.text.chars().collect(),
             literals,
             curr: 0,
+            line: 0,
+            col: -1,
         }
     }
 
@@ -274,7 +279,12 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 }
             }
             ' ' | '\r' | '\t' => Ok(self.create_token(TokenKind::Whitespace)),
-            '\n' => Ok(self.create_token(TokenKind::Newline)),
+            '\n' => {
+                let t = Ok(self.create_token(TokenKind::Newline));
+                self.line += 1;
+                self.col = -1;
+                t
+            }
             _ if c.is_ascii_digit() => self.number(c),
             _ if c.is_alphabetic() || c == '_' => Ok(self.identifier()?),
             _ => Err(KalmarError::UnexpectedChar(c)),
@@ -402,6 +412,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
 
     fn next(&mut self) -> char {
         self.curr += 1;
+        self.col += 1;
         *self.data.get(self.curr - 1).unwrap()
     }
 
@@ -430,8 +441,9 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         Token {
             kind,
             val: literal,
-            pos: start,
             len: self.curr - start,
+            line: self.line,
+            col: self.col as usize,
         }
     }
 }
