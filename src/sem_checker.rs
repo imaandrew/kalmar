@@ -2,7 +2,7 @@ use strum_macros::Display;
 
 use crate::{
     error::KalmarError,
-    lexer::Literal,
+    lexer::{Literal, Token},
     parser::{BinOp, Expr, Stmt, UnOp},
     StringManager,
 };
@@ -76,7 +76,13 @@ impl<'a> SemChecker<'a> {
 
     fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), KalmarError> {
         match stmt {
-            Stmt::Script(Literal::Identifier(i), s) => {
+            Stmt::Script(
+                t @ Token {
+                    val: Some(Literal::Identifier(i)),
+                    ..
+                },
+                s,
+            ) => {
                 self.declared_labels.clear();
                 self.referenced_labels.clear();
                 let script = self
@@ -90,7 +96,12 @@ impl<'a> SemChecker<'a> {
                 self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels)?;
             }
             Stmt::Block(s) => self.check_nodes(s)?,
-            Stmt::Label(Literal::Identifier(i)) => {
+            Stmt::Label(
+                t @ Token {
+                    val: Some(Literal::Identifier(i)),
+                    ..
+                },
+            ) => {
                 if self.declared_labels.len() >= 16 {
                     return Err(KalmarError::TooManyLabels);
                 }
@@ -103,7 +114,10 @@ impl<'a> SemChecker<'a> {
                     .ok_or(KalmarError::RedeclaredLabel(l.to_string()))?,
                 );
             }
-            Stmt::Goto(Literal::Identifier(i)) => {
+            Stmt::Goto(Token {
+                val: Some(Literal::Identifier(i)),
+                ..
+            }) => {
                 let l = self.literals.get(*i).unwrap();
                 if !self.referenced_labels.contains(&l) {
                     self.referenced_labels.push(l);
@@ -135,7 +149,10 @@ impl<'a> SemChecker<'a> {
                     self.check_stmt_node(e)?;
                 }
             }
-            Stmt::Jump(Literal::Identifier(i)) => {
+            Stmt::Jump(Token {
+                val: Some(Literal::Identifier(i)),
+                ..
+            }) => {
                 let l = self.literals.get(*i).unwrap();
                 if !self.referenced_scripts.contains(&l) {
                     self.referenced_scripts.push(l);
@@ -171,7 +188,7 @@ impl<'a> SemChecker<'a> {
 
     fn check_expr_node(&self, expr: &Expr) -> Result<Type, KalmarError> {
         Ok(match expr {
-            Expr::Identifier(l) => match l {
+            Expr::Identifier(l) => match l.val.unwrap() {
                 Literal::Identifier(_) => Type::Identifier,
                 Literal::Number(n) => {
                     if n.is_float() {

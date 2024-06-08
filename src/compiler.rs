@@ -5,7 +5,7 @@ use num_enum::TryFromPrimitive;
 use strum_macros::Display;
 
 use crate::error::KalmarError;
-use crate::lexer::Literal;
+use crate::lexer::{Literal, Token};
 use crate::parser::{BinOp, Expr, Stmt, UnOp};
 use crate::StringManager;
 
@@ -265,7 +265,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         }
 
         match stmt {
-            Stmt::Script(l, s) => {
+            Stmt::Script(Token { val: Some(l), .. }, s) => {
                 let l = match l {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
@@ -285,7 +285,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
             Stmt::Return => {
                 add_op!(Return);
             }
-            Stmt::Label(n) => {
+            Stmt::Label(Token { val: Some(n), .. }) => {
                 let lbl = match n {
                     Literal::Identifier(i) => i,
                     _ => unreachable!(),
@@ -296,7 +296,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 self.code.push(self.num_labels);
                 self.num_labels += 1;
             }
-            Stmt::Goto(n) => {
+            Stmt::Goto(Token { val: Some(n), .. }) => {
                 let lbl = match n {
                     Literal::Identifier(i) => self.literals.get(*i).unwrap(),
                     _ => unreachable!(),
@@ -425,7 +425,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 self.compile_stmt(s)?;
                 add_op!(EndChildThread);
             }
-            Stmt::Jump(i) => {
+            Stmt::Jump(Token { val: Some(i), .. }) => {
                 add_op!(Jump);
                 self.code.push(match i {
                     Literal::Number(n) => n.as_u32(),
@@ -433,7 +433,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 });
             }
             Stmt::Empty => (),
-            Stmt::Else(_, _) => unreachable!(),
+            _ => unreachable!(),
         }
 
         Ok(())
@@ -448,16 +448,16 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         }
 
         match expr {
-            Expr::Identifier(lit) => match lit {
+            Expr::Identifier(t) => match t.val.unwrap() {
                 Literal::Number(n) => self.code.push(n.as_u32()),
                 Literal::Identifier(i) => {
-                    let i = self.literals.get(*i).unwrap();
+                    let i = self.literals.get(i).unwrap();
                     self.code.push(*self.syms.get(i).unwrap_or_else(|| {
                         self.unresolved_syms.push((i, self.code.len() as u32));
                         &0
                     }))
                 }
-                Literal::Boolean(b) => self.code.push(if *b { 1 } else { 0 }),
+                Literal::Boolean(b) => self.code.push(if b { 1 } else { 0 }),
             },
             Expr::UnOp(_op, _expr) => {
                 panic!("idk why this code is here i dont think its reachable lmao");
@@ -541,7 +541,10 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 BinOp::AndEq => {
                     match r.deref() {
                         Expr::Array(_, _) => add_op!(BitwiseAnd),
-                        Expr::Identifier(Literal::Number(_)) => {
+                        Expr::Identifier(Token {
+                            val: Some(Literal::Number(_)),
+                            ..
+                        }) => {
                             add_op!(BitwiseAndConst)
                         }
                         _ => unreachable!(),
@@ -552,7 +555,10 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 BinOp::OrEq => {
                     match r.deref() {
                         Expr::Array(_, _) => add_op!(BitwiseOr),
-                        Expr::Identifier(Literal::Number(_)) => {
+                        Expr::Identifier(Token {
+                            val: Some(Literal::Number(_)),
+                            ..
+                        }) => {
                             add_op!(BitwiseOrConst)
                         }
                         _ => unreachable!(),
@@ -561,8 +567,16 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
                 BinOp::Assign => match r.deref() {
-                    Expr::Identifier(lit) if matches!(lit, Literal::Number(_)) => {
-                        if let Literal::Number(n) = lit {
+                    Expr::Identifier(token)
+                        if matches!(
+                            token,
+                            Token {
+                                val: Some(Literal::Number(_)),
+                                ..
+                            }
+                        ) =>
+                    {
+                        if let Literal::Number(n) = token.val.unwrap() {
                             if n.is_float() {
                                 add_op!(SetF);
                             } else {
@@ -572,9 +586,9 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                             self.compile_expr(r)?;
                         }
                     }
-                    Expr::Identifier(i) if matches!(i, Literal::Identifier(_)) => {
-                        if let Literal::Identifier(i) = i {
-                            match self.literals.get(*i).unwrap() {
+                    Expr::Identifier(i) if matches!(i.val.unwrap(), Literal::Identifier(_)) => {
+                        if let Literal::Identifier(i) = i.val.unwrap() {
+                            match self.literals.get(i).unwrap() {
                                 "Buffer" => add_op!(BufPeek),
                                 "FBuffer" => add_op!(FBufPeek),
                                 _ => panic!(),
@@ -592,9 +606,9 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                         self.compile_expr(l)?;
                         self.compile_expr(r)?;
                     }
-                    Expr::FuncCall(i, a) if matches!(i, Literal::Identifier(_)) => {
-                        if let Literal::Identifier(s) = i {
-                            let f = self.get_func(self.literals.get(*s).unwrap(), true).unwrap();
+                    Expr::FuncCall(i, a) if matches!(i.val.unwrap(), Literal::Identifier(_)) => {
+                        if let Literal::Identifier(s) = i.val.unwrap() {
+                            let f = self.get_func(self.literals.get(s).unwrap(), true).unwrap();
                             self.code.push(f.0);
                             self.code.push(f.1 as u32);
                             for arg in a {
@@ -684,8 +698,8 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 }
             },
             Expr::Array(ident, index) => {
-                let ident = match ident {
-                    Literal::Identifier(i) => self.literals.get(*i).unwrap(),
+                let ident = match ident.val.unwrap() {
+                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => unreachable!(),
                 };
 
@@ -697,10 +711,11 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 self.code.push(get_var(ident, index));
             }
             Expr::FuncCall(func, args) => {
-                let addr = match func {
-                    Literal::Identifier(i) => self
-                        .get_func(self.literals.get(*i).unwrap(), false)
-                        .ok_or_else(|| KalmarError::UndefinedFunction(i.to_string()))?,
+                let addr = match func.val.unwrap() {
+                    Literal::Identifier(i) => {
+                        self.get_func(self.literals.get(i).unwrap(), false)
+                            .ok_or_else(|| KalmarError::UndefinedFunction(i.to_string()))?
+                    }
                     _ => unreachable!(),
                 };
                 if addr.1 == -1 {
@@ -719,8 +734,8 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 }
             }
             Expr::ArrayAssign(ident, expr) => {
-                let ident = match ident {
-                    Literal::Identifier(i) => self.literals.get(*i).unwrap(),
+                let ident = match ident.val.unwrap() {
+                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => unreachable!(),
                 };
 

@@ -8,18 +8,18 @@ use crate::{
 
 #[derive(Debug)]
 pub enum Stmt {
-    Script(Literal, Box<Self>),
+    Script(Token, Box<Self>),
     Block(Vec<Self>),
     Return,
     BreakLoop,
     BreakCase,
-    Label(Literal),
-    Goto(Literal),
+    Label(Token),
+    Goto(Token),
     Loop(Option<Expr>, Box<Self>),
     IfElse(Box<Self>, Option<Box<Self>>),
     If(Expr, Box<Self>),
     Else(Option<Box<Stmt>>, Option<Box<Stmt>>),
-    Jump(Literal),
+    Jump(Token),
     Thread(Box<Self>),
     ChildThread(Box<Self>),
     Expr(Expr),
@@ -44,7 +44,7 @@ impl Display for Stmt {
             let indent = " ".repeat((indent_level + 1) * 2);
             match stmt {
                 Stmt::Script(id, stmts) => {
-                    writeln!(f, "Script {}", id)?;
+                    writeln!(f, "Script {}", id.val.unwrap())?;
                     recursive_fmt(f, stmts, indent_level)
                 }
                 Stmt::Block(stmts) => {
@@ -57,8 +57,8 @@ impl Display for Stmt {
                 Stmt::Return => writeln!(f, "Return"),
                 Stmt::BreakLoop => writeln!(f, "BreakLoop"),
                 Stmt::BreakCase => writeln!(f, "BreakCase"),
-                Stmt::Label(l) => writeln!(f, "Label {}", l),
-                Stmt::Goto(l) => writeln!(f, "Goto {}", l),
+                Stmt::Label(l) => writeln!(f, "Label {}", l.val.unwrap()),
+                Stmt::Goto(l) => writeln!(f, "Goto {}", l.val.unwrap()),
                 Stmt::Loop(e, s) => {
                     if let Some(e) = e.as_ref() {
                         writeln!(f, "Loop {}", e)?;
@@ -92,7 +92,7 @@ impl Display for Stmt {
                         unreachable!()
                     }
                 }
-                Stmt::Jump(l) => writeln!(f, "Jump {}", l),
+                Stmt::Jump(l) => writeln!(f, "Jump {}", l.val.unwrap()),
                 Stmt::Thread(s) => {
                     writeln!(f, "Thread")?;
                     recursive_fmt(f, s, indent_level)
@@ -284,19 +284,19 @@ impl BinOp {
 
 #[derive(Debug)]
 pub enum Expr {
-    Identifier(Literal),
-    Array(Literal, Box<Expr>),
+    Identifier(Token),
+    Array(Token, Box<Expr>),
     UnOp(UnOp, Box<Expr>),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
-    FuncCall(Literal, Vec<Expr>),
-    ArrayAssign(Literal, Box<Expr>),
+    FuncCall(Token, Vec<Expr>),
+    ArrayAssign(Token, Box<Expr>),
     Default,
 }
 
 impl Expr {
     pub fn get_literal(&self) -> Option<Literal> {
         match &self {
-            Self::Identifier(l) => Some(*l),
+            Self::Identifier(l) => Some(l.val.unwrap()),
             _ => None,
         }
     }
@@ -305,19 +305,19 @@ impl Expr {
 impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Identifier(l) => write!(f, "{}", l),
-            Expr::Array(l, e) => write!(f, "{}[{}]", l, e),
+            Expr::Identifier(l) => write!(f, "{}", l.val.unwrap()),
+            Expr::Array(l, e) => write!(f, "{}[{}]", l.val.unwrap(), e),
             Expr::UnOp(op, e) => f.write_fmt(format_args!("{} {}", op, e)),
             Expr::BinOp(op, l, r) => f.write_fmt(format_args!("{} {} {}", l, op, r)),
             Expr::FuncCall(l, args) => {
-                write!(f, "{} ", l)?;
+                write!(f, "{} ", l.val.unwrap())?;
                 for a in args {
                     write!(f, "( {} ) ", a)?
                 }
                 Ok(())
             }
             Expr::Default => write!(f, "Default"),
-            Expr::ArrayAssign(l, e) => write!(f, "{} = {}", l, e),
+            Expr::ArrayAssign(l, e) => write!(f, "{} = {}", l.val.unwrap(), e),
         }
     }
 }
@@ -363,7 +363,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         self.assert(TokenKind::KwScr)?;
         let ident = self.consume(TokenKind::Identifier)?;
         Ok(Stmt::Script(
-            ident.val.unwrap(),
+            *ident,
             Box::new(self.block(Self::statement, true)?),
         ))
     }
@@ -420,14 +420,14 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
     fn goto_statement(&mut self) -> Result<Stmt, KalmarError> {
         let ident = self.consume(TokenKind::Identifier)?;
 
-        Ok(Stmt::Goto(ident.val.unwrap()))
+        Ok(Stmt::Goto(*ident))
     }
 
     fn label_statement(&mut self) -> Result<Stmt, KalmarError> {
-        let lbl_idx = self.consume(TokenKind::Identifier)?.val.unwrap();
+        let lbl = *self.consume(TokenKind::Identifier)?;
         self.assert(TokenKind::Colon)?;
 
-        Ok(Stmt::Label(lbl_idx))
+        Ok(Stmt::Label(lbl))
     }
 
     fn loop_statement(&mut self) -> Result<Stmt, KalmarError> {
@@ -475,7 +475,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
 
     fn jump_statement(&mut self) -> Result<Stmt, KalmarError> {
         let ident = self.consume(TokenKind::Identifier)?;
-        Ok(Stmt::Jump(ident.val.unwrap()))
+        Ok(Stmt::Jump(*ident))
     }
 
     fn thread_statement(&mut self) -> Result<Stmt, KalmarError> {
@@ -511,13 +511,13 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
     fn expr(&mut self, min_prec: u8) -> Result<Expr, KalmarError> {
         let t = *self.pop()?;
         let mut left = match t.kind {
-            TokenKind::Number | TokenKind::Boolean => Expr::Identifier(t.val.unwrap()),
+            TokenKind::Number | TokenKind::Boolean => Expr::Identifier(t),
             TokenKind::Identifier => match self.kind()? {
                 TokenKind::LBracket => {
                     self.pop()?;
                     let idx = self.expr(0)?;
                     self.assert(TokenKind::RBracket)?;
-                    Expr::Array(t.val.unwrap(), Box::new(idx))
+                    Expr::Array(t, Box::new(idx))
                 }
                 TokenKind::LParen => {
                     self.pop()?;
@@ -528,7 +528,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                             TokenKind::RParen => {
                                 self.pop()?;
                                 self.parsing_func_args = false;
-                                return Ok(Expr::FuncCall(t.val.unwrap(), args));
+                                return Ok(Expr::FuncCall(t, args));
                             }
                             TokenKind::Comma => {
                                 self.pop()?;
@@ -537,7 +537,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                         }
                     }
                 }
-                _ => Expr::Identifier(t.val.unwrap()),
+                _ => Expr::Identifier(t),
             },
             TokenKind::Minus
             | TokenKind::Bang
@@ -561,8 +561,8 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         };
 
         loop {
-            let t = self.pop()?.kind;
-            if self.parsing_func_args && t == TokenKind::Comma {
+            let t = *self.pop()?;
+            if self.parsing_func_args && t.kind == TokenKind::Comma {
                 self.rewind()?;
                 break;
             }
@@ -571,7 +571,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                 Err(e) => {
                     // TODO: ew
                     if matches!(
-                        t,
+                        t.kind,
                         TokenKind::LBrace
                             | TokenKind::RBracket
                             | TokenKind::RParen
@@ -591,7 +591,13 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
 
             let right = self.expr(op.precedence().1)?;
             if op == BinOp::Assign {
-                if let Expr::Identifier(lit @ Literal::Identifier(s)) = &left {
+                if let Expr::Identifier(
+                    lit @ Token {
+                        val: Some(Literal::Identifier(s)),
+                        ..
+                    },
+                ) = &left
+                {
                     let s = self.literals.get(*s).unwrap();
                     if matches!(
                         s.to_string().as_str(),

@@ -6,7 +6,7 @@ use std::{
 use crate::{
     compiler::Op,
     error::KalmarError,
-    lexer::{Literal, Number},
+    lexer::{Literal, Number, Token, TokenKind},
     parser::{BinOp, Expr, Stmt, UnOp},
     StringManager,
 };
@@ -76,7 +76,14 @@ impl<'a, 'b> Decompiler<'a, 'b> {
         }
 
         Ok(Stmt::Script(
-            Literal::Identifier(self.literals.add("yoooo")),
+            Token {
+                kind: TokenKind::Identifier,
+                val: Some(Literal::Identifier(self.literals.add("yoooo"))),
+                pos: 0,
+                col: 0,
+                line: 0,
+                len: 0,
+            },
             Box::new(Stmt::Block(block)),
         ))
     }
@@ -95,11 +102,25 @@ impl<'a, 'b> Decompiler<'a, 'b> {
             Op::Return => Stmt::Return,
             Op::Label => {
                 let l = Literal::Number(Number::Int(c.read_u32()?));
-                Stmt::Label(l)
+                Stmt::Label(Token {
+                    kind: TokenKind::Identifier,
+                    val: Some(l),
+                    pos: 0,
+                    col: 0,
+                    line: 0,
+                    len: 0,
+                })
             }
             Op::Goto => {
                 let l = Literal::Number(Number::Int(c.read_u32()?));
-                Stmt::Goto(l)
+                Stmt::Goto(Token {
+                    kind: TokenKind::Identifier,
+                    val: Some(l),
+                    pos: 0,
+                    col: 0,
+                    line: 0,
+                    len: 0,
+                })
             }
             Op::Loop => {
                 let expr = self.decompile_expr(c)?;
@@ -535,7 +556,14 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                 }
                 Stmt::Expr(Expr::FuncCall(Literal::Number(Number::Int(addr)), args))
             }
-            Op::Jump => Stmt::Jump(Literal::Number(Number::Int(c.read_u32()?))),
+            Op::Jump => Stmt::Jump(Token {
+                kind: TokenKind::Number,
+                val: Some(Literal::Number(Number::Int(c.read_u32()?))),
+                pos: 0,
+                col: 0,
+                line: 0,
+                len: 0,
+            }),
             Op::Thread => {
                 let mut block = vec![];
                 while Op::from_u32(c.peek()?)? != Op::EndThread {

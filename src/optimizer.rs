@@ -1,5 +1,6 @@
 use crate::{
     lexer::Literal,
+    lexer::{Token, TokenKind},
     parser::{BinOp, Expr, Stmt, UnOp},
 };
 
@@ -88,8 +89,17 @@ macro_rules! generate_binops {
                 match op {
                 $(
                     BinOp::$binop => match (l.as_ref(), r.as_ref()) {
-                        (Expr::Identifier(Literal::Number(x)), Expr::Identifier(Literal::Number(y))) => {
-                            *$expr = Expr::Identifier(Literal::$type(*x $op *y));
+                        (Expr::Identifier(Token { val: Some(Literal::Number(x)), line, col, pos: pos1, .. }), Expr::Identifier(Token { val: Some(Literal::Number(y)), pos: pos2, len: len2, .. })) => {
+                            let lit = Literal::$type(*x $op *y);
+                            let token = Token {
+                                kind: TokenKind::Number,
+                                val: Some(lit),
+                                pos: *pos1,
+                                line: *line,
+                                col: *col,
+                                len: (*len2 + *pos2) - *pos1,
+                            };
+                            *$expr = Expr::Identifier(token);
                         }
                         _ => (),
                     }
@@ -121,8 +131,24 @@ fn fold_expr_op(expr: &mut Expr) {
     match expr {
         Expr::UnOp(op, e) => match op {
             UnOp::Minus => match &mut **e {
-                Expr::Identifier(Literal::Number(n)) => {
-                    *expr = Expr::Identifier(Literal::Number(-*n))
+                Expr::Identifier(Token {
+                    val: Some(Literal::Number(n)),
+                    pos,
+                    col,
+                    line,
+                    len,
+                    ..
+                }) => {
+                    let lit = Literal::Number(-*n);
+                    let token = Token {
+                        kind: TokenKind::Number,
+                        val: Some(lit),
+                        pos: *pos - 1,
+                        col: *col,
+                        line: *line,
+                        len: *len + 1,
+                    };
+                    *expr = Expr::Identifier(token)
                 }
                 _ => {
                     fold_expr_op(e);
