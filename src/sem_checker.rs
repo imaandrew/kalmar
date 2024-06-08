@@ -1,9 +1,9 @@
 use strum_macros::Display;
 
 use crate::{
-    error::KalmarError,
+    error::NewKalmarError,
     lexer::{Literal, Token},
-    parser::{BinOp, Expr, Stmt, UnOp},
+    parser::{BinOp, Expr, ExprKind, Stmt, UnOp},
     StringManager,
 };
 
@@ -61,20 +61,20 @@ impl<'a> SemChecker<'a> {
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn check_ast(&mut self, ast: &'a Vec<Stmt>) -> Result<(), KalmarError> {
+    pub fn check_ast(&mut self, ast: &'a Vec<Stmt>) -> Result<(), NewKalmarError> {
         self.check_nodes(ast)?;
         self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts)?;
         Ok(())
     }
 
-    fn check_nodes(&mut self, stmts: &'a Vec<Stmt>) -> Result<(), KalmarError> {
+    fn check_nodes(&mut self, stmts: &'a Vec<Stmt>) -> Result<(), NewKalmarError> {
         for stmt in stmts {
             self.check_stmt_node(stmt)?;
         }
         Ok(())
     }
 
-    fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), KalmarError> {
+    fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), NewKalmarError> {
         match stmt {
             Stmt::Script(
                 t @ Token {
@@ -90,7 +90,7 @@ impl<'a> SemChecker<'a> {
                         self.literals.get(*i).unwrap(),
                         &self.declared_scripts,
                     )
-                    .ok_or(KalmarError::RedeclaredScript(i.to_string()))?;
+                    .ok_or(NewKalmarError::RedeclaredScript(*t))?;
                 self.declared_scripts.push(script);
                 self.check_stmt_node(s)?;
                 self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels)?;
@@ -103,15 +103,14 @@ impl<'a> SemChecker<'a> {
                 },
             ) => {
                 if self.declared_labels.len() >= 16 {
-                    return Err(KalmarError::TooManyLabels);
+                    return Err(NewKalmarError::TooManyLabels(*t));
                 }
-                let l = self.literals.get(*i).unwrap();
                 self.declared_labels.push(
                     self.check_identifier_uniqueness(
                         self.literals.get(*i).unwrap(),
                         &self.declared_labels,
                     )
-                    .ok_or(KalmarError::RedeclaredLabel(l.to_string()))?,
+                    .ok_or(NewKalmarError::RedeclaredLabel(*t))?,
                 );
             }
             Stmt::Goto(Token {
@@ -125,7 +124,12 @@ impl<'a> SemChecker<'a> {
             }
             Stmt::Loop(e, s) => {
                 if let Some(e) = e {
-                    assert_types!(self.check_expr_node(e)?, Type::Integer, Type::Integer)?;
+                    assert_types!(
+                        self.check_expr_node(e)?,
+                        e.span,
+                        Type::Integer,
+                        Type::Integer
+                    )?;
                 }
                 self.check_stmt_node(s)?;
             }
@@ -136,7 +140,12 @@ impl<'a> SemChecker<'a> {
                 }
             }
             Stmt::If(e, s) => {
-                assert_types!(self.check_expr_node(e)?, Type::Boolean, Type::Boolean)?;
+                assert_types!(
+                    self.check_expr_node(e)?,
+                    e.span,
+                    Type::Boolean,
+                    Type::Boolean
+                )?;
                 self.check_stmt_node(s)?;
             }
             Stmt::Else(i, b) => {
@@ -162,6 +171,7 @@ impl<'a> SemChecker<'a> {
             Stmt::ChildThread(s) => self.check_stmt_node(s)?,
             Stmt::Expr(e) => assert_types!(
                 self.check_expr_node(e)?,
+                e.span,
                 Type::Assign | Type::FuncCall,
                 Type::Assign,
                 Type::FuncCall
@@ -169,6 +179,7 @@ impl<'a> SemChecker<'a> {
             Stmt::Switch(e, s) => {
                 assert_types!(
                     self.check_expr_node(e)?,
+                    e.span,
                     Type::Integer | Type::Var,
                     Type::Integer,
                     Type::Var
@@ -186,9 +197,9 @@ impl<'a> SemChecker<'a> {
         Ok(())
     }
 
-    fn check_expr_node(&self, expr: &Expr) -> Result<Type, KalmarError> {
-        Ok(match expr {
-            Expr::Identifier(l) => match l.val.unwrap() {
+    fn check_expr_node(&self, expr: &Expr) -> Result<Type, NewKalmarError> {
+        Ok(match &expr.kind {
+            ExprKind::Identifier(l) => match l.val.unwrap() {
                 Literal::Identifier(_) => Type::Identifier,
                 Literal::Number(n) => {
                     if n.is_float() {
@@ -199,40 +210,52 @@ impl<'a> SemChecker<'a> {
                 }
                 Literal::Boolean(_) => Type::Boolean,
             },
-            Expr::Array(_, e) => {
-                assert_types!(self.check_expr_node(e)?, Type::Integer, Type::Integer)?;
+            ExprKind::Array(_, e) => {
+                assert_types!(
+                    self.check_expr_node(e)?,
+                    e.span,
+                    Type::Integer,
+                    Type::Integer
+                )?;
                 Type::Var
             }
-            Expr::UnOp(op, expr) => self.check_unop_type(op, expr)?,
-            Expr::BinOp(op, lhs, rhs) => self.check_binop_type(op, lhs, rhs)?,
-            Expr::FuncCall(_, args) => {
+            ExprKind::UnOp(op, expr) => self.check_unop_type(op, expr)?,
+            ExprKind::BinOp(op, lhs, rhs) => self.check_binop_type(op, lhs, rhs)?,
+            ExprKind::FuncCall(_, args) => {
                 for e in args {
                     self.check_expr_node(e)?;
                 }
                 Type::FuncCall
             }
-            Expr::ArrayAssign(_, e) => {
+            ExprKind::ArrayAssign(_, e) => {
                 assert_types!(
                     self.check_expr_node(e)?,
+                    e.span,
                     Type::Integer | Type::Var,
                     Type::Integer,
                     Type::Var
                 )?;
                 Type::Assign
             }
-            Expr::Default => Type::Case,
+            ExprKind::Default => Type::Case,
         })
     }
 
-    fn check_unop_type(&self, op: &UnOp, expr: &Expr) -> Result<Type, KalmarError> {
+    fn check_unop_type(&self, op: &UnOp, expr: &Expr) -> Result<Type, NewKalmarError> {
         let t = self.check_expr_node(expr)?;
         Ok(match op {
             UnOp::Minus => {
-                assert_types!(t, Type::Integer | Type::Float, Type::Integer, Type::Float)?;
+                assert_types!(
+                    t,
+                    expr.span,
+                    Type::Integer | Type::Float,
+                    Type::Integer,
+                    Type::Float
+                )?;
                 t
             }
             UnOp::Bang => {
-                assert_types!(t, Type::Boolean, Type::Boolean)?;
+                assert_types!(t, expr.span, Type::Boolean, Type::Boolean)?;
                 Type::Boolean
             }
             UnOp::Equal
@@ -243,6 +266,7 @@ impl<'a> SemChecker<'a> {
             | UnOp::LessEq => {
                 assert_types!(
                     t,
+                    expr.span,
                     Type::Integer | Type::Float | Type::Var,
                     Type::Integer,
                     Type::Float,
@@ -251,22 +275,31 @@ impl<'a> SemChecker<'a> {
                 Type::Case
             }
             UnOp::Ampersand => {
-                assert_types!(t, Type::Var | Type::Integer, Type::Var, Type::Integer)?;
+                assert_types!(
+                    t,
+                    expr.span,
+                    Type::Var | Type::Integer,
+                    Type::Var,
+                    Type::Integer
+                )?;
                 t
             }
         })
     }
 
-    fn check_binop_type(&self, op: &BinOp, lhs: &Expr, rhs: &Expr) -> Result<Type, KalmarError> {
+    fn check_binop_type(&self, op: &BinOp, lhs: &Expr, rhs: &Expr) -> Result<Type, NewKalmarError> {
         let l_type = self.check_expr_node(lhs)?;
         let r_type = self.check_expr_node(rhs)?;
         Ok(match op {
             BinOp::Plus | BinOp::Minus | BinOp::Star | BinOp::Div => {
                 if l_type != r_type {
-                    return Err(KalmarError::TypeMismatch(l_type, r_type));
+                    return Err(NewKalmarError::UnequalTypes(
+                        lhs.span, l_type, rhs.span, r_type,
+                    ));
                 }
                 assert_types!(
                     l_type,
+                    lhs.span,
                     Type::Integer | Type::Float,
                     Type::Integer,
                     Type::Float
@@ -274,13 +307,19 @@ impl<'a> SemChecker<'a> {
                 l_type
             }
             BinOp::Mod | BinOp::BitOr => {
-                assert_types!(l_type, Type::Integer, Type::Integer)?;
-                assert_types!(r_type, Type::Integer, Type::Integer)?;
+                assert_types!(l_type, lhs.span, Type::Integer, Type::Integer)?;
+                assert_types!(r_type, rhs.span, Type::Integer, Type::Integer)?;
                 l_type
             }
             BinOp::BitAnd => {
-                assert_types!(l_type, Type::Var | Type::Integer, Type::Var, Type::Integer)?;
-                assert_types!(r_type, Type::Integer, Type::Integer)?;
+                assert_types!(
+                    l_type,
+                    lhs.span,
+                    Type::Var | Type::Integer,
+                    Type::Var,
+                    Type::Integer
+                )?;
+                assert_types!(r_type, rhs.span, Type::Integer, Type::Integer)?;
                 if l_type == Type::Var {
                     Type::Boolean
                 } else {
@@ -288,9 +327,10 @@ impl<'a> SemChecker<'a> {
                 }
             }
             BinOp::PlusEq | BinOp::MinusEq | BinOp::StarEq | BinOp::DivEq => {
-                assert_types!(l_type, Type::Var, Type::Var)?;
+                assert_types!(l_type, lhs.span, Type::Var, Type::Var)?;
                 assert_types!(
                     r_type,
+                    rhs.span,
                     Type::Integer | Type::Float | Type::Var,
                     Type::Integer,
                     Type::Float,
@@ -299,8 +339,14 @@ impl<'a> SemChecker<'a> {
                 Type::Assign
             }
             BinOp::ModEq | BinOp::OrEq | BinOp::AndEq => {
-                assert_types!(l_type, Type::Var, Type::Var)?;
-                assert_types!(r_type, Type::Integer | Type::Var, Type::Integer, Type::Var)?;
+                assert_types!(l_type, lhs.span, Type::Var, Type::Var)?;
+                assert_types!(
+                    r_type,
+                    rhs.span,
+                    Type::Integer | Type::Var,
+                    Type::Integer,
+                    Type::Var
+                )?;
                 Type::Assign
             }
             BinOp::Equal
@@ -311,6 +357,7 @@ impl<'a> SemChecker<'a> {
             | BinOp::LessEq => {
                 assert_types!(
                     l_type,
+                    lhs.span,
                     Type::Integer | Type::Float | Type::Var,
                     Type::Integer,
                     Type::Float,
@@ -318,20 +365,24 @@ impl<'a> SemChecker<'a> {
                 )?;
                 assert_types!(
                     r_type,
+                    rhs.span,
                     Type::Integer | Type::Float | Type::Var,
                     Type::Integer,
                     Type::Float,
                     Type::Var
                 )?;
                 if l_type != Type::Var && r_type != Type::Var && l_type != r_type {
-                    return Err(KalmarError::TypeMismatch(l_type, r_type));
+                    return Err(NewKalmarError::UnequalTypes(
+                        lhs.span, l_type, rhs.span, r_type,
+                    ));
                 }
                 Type::Boolean
             }
             BinOp::Assign => {
-                assert_types!(l_type, Type::Var, Type::Var)?;
+                assert_types!(l_type, lhs.span, Type::Var, Type::Var)?;
                 assert_types!(
                     r_type,
+                    rhs.span,
                     Type::Integer | Type::Float | Type::Var,
                     Type::Integer,
                     Type::Float,
@@ -340,18 +391,30 @@ impl<'a> SemChecker<'a> {
                 Type::Assign
             }
             BinOp::Range => {
-                assert_types!(l_type, Type::Integer, Type::Integer)?;
-                assert_types!(r_type, Type::Integer, Type::Integer)?;
+                assert_types!(l_type, lhs.span, Type::Integer, Type::Integer)?;
+                assert_types!(r_type, rhs.span, Type::Integer, Type::Integer)?;
                 Type::Range
             }
             BinOp::Comma => {
-                assert_types!(l_type, Type::Var | Type::VarList, Type::Var, Type::VarList)?;
-                assert_types!(r_type, Type::Var, Type::Var)?;
+                assert_types!(
+                    l_type,
+                    lhs.span,
+                    Type::Var | Type::VarList,
+                    Type::Var,
+                    Type::VarList
+                )?;
+                assert_types!(r_type, rhs.span, Type::Var, Type::Var)?;
                 Type::VarList
             }
             BinOp::Arrow => {
-                assert_types!(l_type, Type::Var | Type::VarList, Type::Var, Type::VarList)?;
-                assert_types!(r_type, Type::Identifier, Type::Identifier)?;
+                assert_types!(
+                    l_type,
+                    lhs.span,
+                    Type::Var | Type::VarList,
+                    Type::Var,
+                    Type::VarList
+                )?;
+                assert_types!(r_type, rhs.span, Type::Identifier, Type::Identifier)?;
                 Type::Assign
             }
         })
@@ -369,7 +432,7 @@ impl<'a> SemChecker<'a> {
         &self,
         declared: &[&'a str],
         referenced: &Vec<&'a str>,
-    ) -> Result<(), KalmarError> {
+    ) -> Result<(), NewKalmarError> {
         let mut undeclared_references = vec![];
         for ident in referenced {
             if !declared.contains(ident) {
@@ -381,7 +444,8 @@ impl<'a> SemChecker<'a> {
         if undeclared_references.is_empty() {
             Ok(())
         } else {
-            Err(KalmarError::UndeclaredReference(undeclared_references))
+            panic!()
+            //Err(KalmarError::UndeclaredReference(undeclared_references))
         }
     }
 }

@@ -61,7 +61,7 @@ impl Display for Stmt {
                 Stmt::Goto(l) => writeln!(f, "Goto {}", l.val.unwrap()),
                 Stmt::Loop(e, s) => {
                     if let Some(e) = e.as_ref() {
-                        writeln!(f, "Loop {}", e)?;
+                        writeln!(f, "Loop {}", e.kind)?;
                     } else {
                         writeln!(f, "Loop")?;
                     }
@@ -78,7 +78,7 @@ impl Display for Stmt {
                     Ok(())
                 }
                 Stmt::If(e, s) => {
-                    writeln!(f, "If {}", e)?;
+                    writeln!(f, "If {}", e.kind)?;
                     recursive_fmt(f, s, indent_level)
                 }
                 Stmt::Else(i, e) => {
@@ -101,13 +101,13 @@ impl Display for Stmt {
                     writeln!(f, "ChildThread")?;
                     recursive_fmt(f, s, indent_level)
                 }
-                Stmt::Expr(e) => writeln!(f, "{}", e),
+                Stmt::Expr(e) => writeln!(f, "{}", e.kind),
                 Stmt::Switch(e, s) => {
-                    writeln!(f, "Switch {}", e)?;
+                    writeln!(f, "Switch {}", e.kind)?;
                     recursive_fmt(f, s, indent_level)
                 }
                 Stmt::Case(e, s) => {
-                    writeln!(f, "Case {}", e)?;
+                    writeln!(f, "Case {}", e.kind)?;
                     recursive_fmt(f, s, indent_level)
                 }
                 Stmt::Empty => writeln!(f, "Empty"),
@@ -282,8 +282,34 @@ impl BinOp {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Span {
+    pub line: usize,
+    pub col: usize,
+    pub len: usize,
+}
+
 #[derive(Debug)]
-pub enum Expr {
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
+
+impl Expr {
+    fn new(kind: ExprKind, t: &Token) -> Self {
+        Self {
+            kind,
+            span: Span {
+                line: t.line,
+                col: t.col,
+                len: t.len,
+            },
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ExprKind {
     Identifier(Token),
     Array(Token, Box<Expr>),
     UnOp(UnOp, Box<Expr>),
@@ -293,7 +319,7 @@ pub enum Expr {
     Default,
 }
 
-impl Expr {
+impl ExprKind {
     pub fn get_literal(&self) -> Option<Literal> {
         match &self {
             Self::Identifier(l) => Some(l.val.unwrap()),
@@ -302,22 +328,22 @@ impl Expr {
     }
 }
 
-impl Display for Expr {
+impl Display for ExprKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Identifier(l) => write!(f, "{}", l.val.unwrap()),
-            Expr::Array(l, e) => write!(f, "{}[{}]", l.val.unwrap(), e),
-            Expr::UnOp(op, e) => f.write_fmt(format_args!("{} {}", op, e)),
-            Expr::BinOp(op, l, r) => f.write_fmt(format_args!("{} {} {}", l, op, r)),
-            Expr::FuncCall(l, args) => {
+            Self::Identifier(l) => write!(f, "{}", l.val.unwrap()),
+            Self::Array(l, e) => write!(f, "{}[{}]", l.val.unwrap(), e.kind),
+            Self::UnOp(op, e) => f.write_fmt(format_args!("{} {}", op, e.kind)),
+            Self::BinOp(op, l, r) => f.write_fmt(format_args!("{} {} {}", l.kind, op, r.kind)),
+            Self::FuncCall(l, args) => {
                 write!(f, "{} ", l.val.unwrap())?;
                 for a in args {
-                    write!(f, "( {} ) ", a)?
+                    write!(f, "( {} ) ", a.kind)?
                 }
                 Ok(())
             }
-            Expr::Default => write!(f, "Default"),
-            Expr::ArrayAssign(l, e) => write!(f, "{} = {}", l.val.unwrap(), e),
+            Self::Default => write!(f, "Default"),
+            Self::ArrayAssign(l, e) => write!(f, "{} = {}", l.val.unwrap(), e.kind),
         }
     }
 }
@@ -497,10 +523,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
 
     fn case_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let case = match self.kind()? {
-            TokenKind::KwDefault => {
-                self.pop()?;
-                Expr::Default
-            }
+            TokenKind::KwDefault => Expr::new(ExprKind::Default, self.pop()?),
             _ => self.expr(0)?,
         };
         let block = self.block(Self::statement, true)?;
@@ -511,13 +534,20 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
     fn expr(&mut self, min_prec: u8) -> Result<Expr, NewKalmarError> {
         let t = *self.pop()?;
         let mut left = match t.kind {
-            TokenKind::Number | TokenKind::Boolean => Expr::Identifier(t),
+            TokenKind::Number | TokenKind::Boolean => Expr::new(ExprKind::Identifier(t), &t),
             TokenKind::Identifier => match self.kind()? {
                 TokenKind::LBracket => {
                     self.pop()?;
                     let idx = self.expr(0)?;
-                    self.assert(TokenKind::RBracket)?;
-                    Expr::Array(t, Box::new(idx))
+                    let rb = self.consume(TokenKind::RBracket)?;
+                    Expr {
+                        kind: ExprKind::Array(t, Box::new(idx)),
+                        span: Span {
+                            line: t.line,
+                            col: t.col,
+                            len: rb.col + rb.len - t.len,
+                        },
+                    }
                 }
                 TokenKind::LParen => {
                     self.pop()?;
@@ -526,9 +556,16 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                     loop {
                         match self.kind()? {
                             TokenKind::RParen => {
-                                self.pop()?;
+                                let rp = *self.pop()?;
                                 self.parsing_func_args = false;
-                                return Ok(Expr::FuncCall(t, args));
+                                return Ok(Expr {
+                                    kind: ExprKind::FuncCall(t, args),
+                                    span: Span {
+                                        line: t.line,
+                                        col: t.col,
+                                        len: rp.col + rp.len - t.col,
+                                    },
+                                });
                             }
                             TokenKind::Comma => {
                                 self.pop()?;
@@ -537,7 +574,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                         }
                     }
                 }
-                _ => Expr::Identifier(t),
+                _ => Expr::new(ExprKind::Identifier(t), &t),
             },
             TokenKind::Minus
             | TokenKind::Bang
@@ -550,12 +587,27 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
             | TokenKind::And => {
                 let op = UnOp::try_from(t)?;
                 let r = self.expr(op.precedence().1)?;
-                Expr::UnOp(op, Box::new(r))
+                let s = r.span;
+                Expr {
+                    kind: ExprKind::UnOp(op, Box::new(r)),
+                    span: Span {
+                        line: t.line,
+                        col: t.col,
+                        len: s.col + s.len - t.col,
+                    },
+                }
             }
             TokenKind::LParen => {
                 let expr = self.expr(0)?;
-                self.assert(TokenKind::RParen)?;
-                expr
+                let rp = self.consume(TokenKind::RParen)?;
+                Expr {
+                    kind: expr.kind,
+                    span: Span {
+                        line: t.line,
+                        col: t.col,
+                        len: rp.col + rp.len - t.col,
+                    },
+                }
             }
             _ => return Err(NewKalmarError::ExpectedExpr(t)),
         };
@@ -591,24 +643,41 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
 
             let right = self.expr(op.precedence().1)?;
             if op == BinOp::Assign {
-                if let Expr::Identifier(
+                if let ExprKind::Identifier(
                     lit @ Token {
                         val: Some(Literal::Identifier(s)),
                         ..
                     },
-                ) = &left
+                ) = &left.kind
                 {
                     let s = self.literals.get(*s).unwrap();
                     if matches!(
                         s.to_string().as_str(),
                         "Buffer" | "FBuffer" | "Array" | "FlagArray"
                     ) {
-                        left = Expr::ArrayAssign(*lit, Box::new(right));
+                        let s = right.span;
+                        left = Expr {
+                            kind: ExprKind::ArrayAssign(*lit, Box::new(right)),
+                            span: Span {
+                                line: left.span.line,
+                                col: left.span.col,
+                                len: s.col + s.len - left.span.col,
+                            },
+                        };
                         continue;
                     }
                 }
             }
-            left = Expr::BinOp(op, Box::new(left), Box::new(right));
+            let l_span = left.span;
+            let r_span = right.span;
+            left = Expr {
+                kind: ExprKind::BinOp(op, Box::new(left), Box::new(right)),
+                span: Span {
+                    line: l_span.line,
+                    col: l_span.col,
+                    len: r_span.col + r_span.len - l_span.col,
+                },
+            };
         }
         Ok(left)
     }
@@ -668,7 +737,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
     }
 
     fn skip_newlines(&mut self) -> Result<(), NewKalmarError> {
-        while self.kind()? == TokenKind::Newline {
+        while !self.at_end() && self.kind()? == TokenKind::Newline {
             self.pop()?;
         }
         Ok(())

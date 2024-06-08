@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use crate::compiler::Op;
 use crate::lexer::{Literal, Token, TokenKind};
+use crate::parser::Span;
 use crate::sem_checker::Type;
 use crate::StringManager;
 use std::io::IsTerminal;
@@ -120,6 +121,9 @@ pub enum NewKalmarError {
     TooManyLabels(Token),
     RedeclaredScript(Token),
     RedeclaredLabel(Token),
+    InvalidType(Span, Type, Type),
+    InvalidTypes(Span, Vec<Type>, Type),
+    UnequalTypes(Span, Type, Span, Type),
 }
 
 pub struct ErrorPrinter<'err, 'smgr> {
@@ -144,7 +148,7 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                     _ => panic!(),
                 };
                 let msg = format!("unexpected character: {}", char);
-                (msg, line, t.line + 1, t.col, t.len)
+                (msg, line, t.line, t.col, t.len)
             }
             NewKalmarError::BaseMissingNumber(t) => {
                 let line = self.literals.err_context(t.line);
@@ -153,32 +157,32 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                     _ => panic!(),
                 };
                 let msg = format!("found base prefix `{}`, but missing number", base);
-                (msg, line, t.line + 1, t.col, t.len)
+                (msg, line, t.line, t.col, t.len)
             }
             NewKalmarError::UnexpectedToken(found, expected) => {
                 let line = self.literals.err_context(found.line);
                 let msg = format!("expected `{}` token, found `{}`", expected, found.kind);
-                (msg, line, found.line + 1, found.col, found.len)
+                (msg, line, found.line, found.col, found.len)
             }
             NewKalmarError::InvalidOperator(expected, found) => {
                 let line = self.literals.err_context(found.line);
                 let msg = format!("expected `{}` operator, found `{}`", expected, found.kind);
-                (msg, line, found.line + 1, found.col, found.len)
+                (msg, line, found.line, found.col, found.len)
             }
             NewKalmarError::ExpectedStmt(stmt) => {
                 let line = self.literals.err_context(stmt.line);
                 let msg = format!("expected statement, found `{}`", stmt.kind);
-                (msg, line, stmt.line + 1, stmt.col, stmt.len)
+                (msg, line, stmt.line, stmt.col, stmt.len)
             }
             NewKalmarError::ExpectedExpr(stmt) => {
                 let line = self.literals.err_context(stmt.line);
                 let msg = format!("expected expression, found `{}`", stmt.kind);
-                (msg, line, stmt.line + 1, stmt.col, stmt.len)
+                (msg, line, stmt.line, stmt.col, stmt.len)
             }
             NewKalmarError::UnexpectedEndTokenStream => {
                 let line = self.literals.lines.last().unwrap();
                 let msg = "unexpected end of token stream".to_string();
-                (msg, *line, self.literals.lines.len(), line.len(), 1)
+                (msg, *line, self.literals.lines.len() - 1, line.len(), 1)
             }
             NewKalmarError::TooManyLabels(t) => {
                 let line = self.literals.err_context(t.line);
@@ -190,7 +194,7 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                     "cannot create new label `{}`, already at max 16 labels",
                     lbl
                 );
-                (msg, line, t.line + 1, t.col, t.len)
+                (msg, line, t.line, t.col, t.len)
             }
             NewKalmarError::RedeclaredScript(t) | NewKalmarError::RedeclaredLabel(t) => {
                 let line = self.literals.err_context(t.line);
@@ -199,9 +203,36 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                     _ => panic!(),
                 };
                 let msg = format!("redeclaration of `{}`", lbl);
-                (msg, line, t.line + 1, t.col, t.len)
+                (msg, line, t.line, t.col, t.len)
             }
-            _ => panic!(),
+            NewKalmarError::InvalidType(span, expected, found) => {
+                let line = self.literals.err_context(span.line);
+                let msg = format!("invalid type, expected `{}`, found `{}`", expected, found);
+                (msg, line, span.line, span.col, span.len)
+            }
+            NewKalmarError::InvalidTypes(span, expected, found) => {
+                let line = self.literals.err_context(span.line);
+                let msg = format!(
+                    "invalid type, expected one of `{:?}`, found `{}`",
+                    expected, found
+                );
+                (msg, line, span.line, span.col, span.len)
+            }
+            NewKalmarError::UnequalTypes(l_span, l_type, r_span, r_type) => {
+                let line = self.literals.err_context(l_span.line);
+                let msg = format!(
+                    "type mismatch, lhs has type `{}`, rhs has type `{}`",
+                    l_type, r_type
+                );
+                // TODO: highlight both types independently
+                (
+                    msg,
+                    line,
+                    l_span.line,
+                    l_span.col,
+                    r_span.len + r_span.col - l_span.col,
+                )
+            }
         };
 
         let mut stderr = StandardStream::stderr(if std::io::stdin().is_terminal() {
@@ -235,11 +266,11 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
 
         let margin = line_num.to_string().len();
 
-        write_colour!("{}:{}:{}: ", self.file_name, line_num, col_num);
+        write_colour!("{}:{}:{}: ", self.file_name, line_num + 1, col_num + 1);
         write_colour!(Red, "error");
         writeln_colour!(": {}", msg);
 
-        write_colour!("{:<margin$} | ", line_num);
+        write_colour!("{:<margin$} | ", line_num + 1);
         writeln_colour!("{}", line);
 
         write_colour!("{:>margin$} | ", "");
