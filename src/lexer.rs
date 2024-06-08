@@ -473,7 +473,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
             val: literal,
             len: self.curr - start,
             line: self.line,
-            col: self.col as usize,
+            col: self.col as usize - (self.curr - start - 1),
         }
     }
 }
