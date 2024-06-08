@@ -349,11 +349,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 TokenKind::Number,
                 start,
                 Some(Literal::Number(Number::Float(
-                    self.literals.text[start..self.curr].parse().map_err(|_| {
-                        KalmarError::IntParseError(String::from(
-                            &self.literals.text[start..self.curr],
-                        ))
-                    })?,
+                    self.literals.text[start..self.curr].parse().unwrap(),
                 ))),
             ));
         }
@@ -362,27 +358,25 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
             TokenKind::Number,
             start,
             Some(Literal::Number(Number::Int(
-                u32::from_str_radix(&self.literals.text[start..self.curr], base).map_err(|_| {
-                    KalmarError::IntParseError(String::from(&self.literals.text[start..self.curr]))
-                })?,
+                u32::from_str_radix(&self.literals.text[start..self.curr], base).unwrap(),
             ))),
         ))
     }
 
     fn consume_decimal_digits(&mut self) -> bool {
-        let mut non_empty = true;
+        let mut non_empty = false;
         while self.peek().is_ascii_digit() {
             self.next();
-            non_empty = false;
+            non_empty = true;
         }
         non_empty
     }
 
     fn consume_hex_digits(&mut self) -> bool {
-        let mut non_empty = true;
+        let mut non_empty = false;
         while self.peek().is_ascii_hexdigit() {
             self.next();
-            non_empty = false;
+            non_empty = true;
         }
         non_empty
     }

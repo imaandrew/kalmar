@@ -614,7 +614,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
     }
 
     fn bound_check_tokens(&self) -> Result<(), KalmarError> {
-        if self.curr >= self.tokens.len() {
+        if self.at_end() {
             return Err(KalmarError::UnexpectedEndTokenStream);
         }
         Ok(())
@@ -623,12 +623,11 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
     fn pop(&mut self) -> Result<&Token, KalmarError> {
         self.bound_check_tokens()?;
         self.curr += 1;
-        Ok(self.tokens.get(self.curr).unwrap())
+        Ok(self.tokens.get(self.curr - 1).unwrap())
     }
 
     fn kind(&mut self) -> Result<TokenKind, KalmarError> {
         self.bound_check_tokens()?;
-        self.curr += 1;
         Ok(self.tokens.get(self.curr).unwrap().kind)
     }
 
@@ -684,6 +683,6 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
     }
 
     fn at_end(&self) -> bool {
-        self.curr >= self.tokens.len()
+        self.curr >= self.tokens.len() || self.tokens.get(self.curr).unwrap().kind == TokenKind::Eof
     }
 }
