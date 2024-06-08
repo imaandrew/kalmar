@@ -22,19 +22,19 @@ pub enum Type {
 }
 
 macro_rules! assert_types {
-    ($lhs:expr, $pattern:pat, $($x:expr),+) => {{
+    ($lhs:expr, $span:expr, $pattern:pat, $x:expr) => {{
         match $lhs {
             $pattern => Ok(()),
             t => {
-                Err(KalmarError::TypesMismatch(vec![$($x),+], t))
+                Err(NewKalmarError::InvalidType($span, $x, t))
             }
         }
     }};
-    ($lhs:expr, $pattern:pat, $x:expr) => {{
+    ($lhs:expr, $span:expr, $pattern:pat, $($x:expr),+) => {{
         match $lhs {
             $pattern => Ok(()),
             t => {
-                Err(KalmarError::TypeMismatch($x, t))
+                Err(NewKalmarError::InvalidTypes($span, vec![$($x),+], t))
             }
         }
     }};
