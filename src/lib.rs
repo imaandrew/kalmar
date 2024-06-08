@@ -101,10 +101,10 @@ impl std::fmt::Display for SymbolIndex {
     }
 }
 
-#[derive(Default)]
 struct StringManager<'a> {
     strings: IndexSet<&'a str>,
     text: &'a str,
+    lines: Vec<&'a str>,
 }
 
 impl<'a> StringManager<'a> {
@@ -112,6 +112,7 @@ impl<'a> StringManager<'a> {
         Self {
             strings: IndexSet::new(),
             text,
+            lines: text.lines().collect(),
         }
     }
 
@@ -121,6 +122,10 @@ impl<'a> StringManager<'a> {
 
     fn get(&self, idx: SymbolIndex) -> Option<&'a str> {
         self.strings.get_index(idx.get_idx()).copied()
+    }
+
+    fn err_context(&self, line_num: usize) -> &str {
+        self.lines.get(line_num).unwrap()
     }
 }
 
