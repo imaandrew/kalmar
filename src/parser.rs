@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    error::KalmarError,
+    error::NewKalmarError,
     lexer::{Literal, Token, TokenKind},
     StringManager,
 };
@@ -140,11 +140,11 @@ pub enum UnOp {
     LessEq,
 }
 
-impl TryFrom<TokenKind> for UnOp {
-    type Error = KalmarError;
+impl TryFrom<Token> for UnOp {
+    type Error = NewKalmarError;
 
-    fn try_from(value: TokenKind) -> Result<Self, Self::Error> {
-        match value {
+    fn try_from(t: Token) -> Result<Self, Self::Error> {
+        match t.kind {
             TokenKind::Minus => Ok(Self::Minus),
             TokenKind::Bang => Ok(Self::Bang),
             TokenKind::And => Ok(Self::Ampersand),
@@ -154,7 +154,7 @@ impl TryFrom<TokenKind> for UnOp {
             TokenKind::GreaterEq => Ok(Self::GreaterEq),
             TokenKind::Less => Ok(Self::Less),
             TokenKind::LessEq => Ok(Self::LessEq),
-            _ => Err(KalmarError::InvalidOperator("unary", value)),
+            _ => Err(NewKalmarError::InvalidOperator("unary", t)),
         }
     }
 }
@@ -225,11 +225,11 @@ pub enum BinOp {
     Comma,
 }
 
-impl TryFrom<TokenKind> for BinOp {
-    type Error = KalmarError;
+impl TryFrom<Token> for BinOp {
+    type Error = NewKalmarError;
 
-    fn try_from(value: TokenKind) -> Result<Self, Self::Error> {
-        match value {
+    fn try_from(t: Token) -> Result<Self, Self::Error> {
+        match t.kind {
             TokenKind::Plus => Ok(Self::Plus),
             TokenKind::Minus => Ok(Self::Minus),
             TokenKind::Star => Ok(Self::Star),
@@ -254,7 +254,7 @@ impl TryFrom<TokenKind> for BinOp {
             TokenKind::Eq => Ok(Self::Assign),
             TokenKind::Comma => Ok(Self::Comma),
             TokenKind::Arrow => Ok(Self::Arrow),
-            _ => Err(KalmarError::InvalidOperator("binary", value)),
+            _ => Err(NewKalmarError::InvalidOperator("binary", t)),
         }
     }
 }
@@ -341,7 +341,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         }
     }
 
-    pub fn parse(&mut self, verbose: bool) -> Result<Vec<Stmt>, KalmarError> {
+    pub fn parse(&mut self, verbose: bool) -> Result<Vec<Stmt>, NewKalmarError> {
         let mut stmts = vec![];
         self.verbose = verbose;
         self.skip_newlines()?;
@@ -359,7 +359,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         Ok(stmts)
     }
 
-    fn declaration(&mut self) -> Result<Stmt, KalmarError> {
+    fn declaration(&mut self) -> Result<Stmt, NewKalmarError> {
         self.assert(TokenKind::KwScr)?;
         let ident = self.consume(TokenKind::Identifier)?;
         Ok(Stmt::Script(
@@ -368,9 +368,9 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         ))
     }
 
-    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Result<Stmt, KalmarError>
+    fn block<F>(&mut self, stmt_func: F, end_stmt_newlines: bool) -> Result<Stmt, NewKalmarError>
     where
-        F: Fn(&mut Self) -> Result<Stmt, KalmarError>,
+        F: Fn(&mut Self) -> Result<Stmt, NewKalmarError>,
     {
         self.consume(TokenKind::LBrace)?;
         self.assert(TokenKind::Newline)?;
@@ -390,7 +390,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         Ok(Stmt::Block(stmts))
     }
 
-    fn statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let t = self.pop()?;
         let s = match t.kind {
             TokenKind::KwReturn => Ok(Stmt::Return),
@@ -411,26 +411,26 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                 self.rewind()?;
                 Ok(Stmt::Expr(self.expr(0)?))
             }
-            _ => Err(KalmarError::ExpectedStmt(t.kind)),
+            _ => Err(NewKalmarError::ExpectedStmt(*t)),
         }?;
 
         Ok(s)
     }
 
-    fn goto_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn goto_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let ident = self.consume(TokenKind::Identifier)?;
 
         Ok(Stmt::Goto(*ident))
     }
 
-    fn label_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn label_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let lbl = *self.consume(TokenKind::Identifier)?;
         self.assert(TokenKind::Colon)?;
 
         Ok(Stmt::Label(lbl))
     }
 
-    fn loop_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn loop_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let loop_count = if self.peek(TokenKind::LBrace)? {
             None
         } else {
@@ -442,10 +442,10 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         Ok(Stmt::Loop(loop_count, Box::new(block)))
     }
 
-    fn if_else_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn if_else_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let if_stmt = self.if_statement()?;
 
-        let else_stmt = if self.peek_over_newlines(TokenKind::KwElse)? {
+        let else_stmt = if self.peek_over_newlines(TokenKind::KwElse) {
             self.skip_newlines()?;
             self.assert(TokenKind::KwElse)?;
             Some(Box::new(self.else_statement()?))
@@ -456,13 +456,13 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         Ok(Stmt::IfElse(Box::new(if_stmt), else_stmt))
     }
 
-    fn if_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn if_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let if_expr = self.expr(0)?;
         let if_block = self.block(Self::statement, true)?;
         Ok(Stmt::If(if_expr, Box::new(if_block)))
     }
 
-    fn else_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn else_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         Ok(if self.peek(TokenKind::KwIf)? {
             self.assert(TokenKind::KwIf)?;
             let if_stmt = self.if_else_statement()?;
@@ -473,29 +473,29 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         })
     }
 
-    fn jump_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn jump_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let ident = self.consume(TokenKind::Identifier)?;
         Ok(Stmt::Jump(*ident))
     }
 
-    fn thread_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn thread_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         Ok(Stmt::Thread(Box::new(self.block(Self::statement, true)?)))
     }
 
-    fn child_thread_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn child_thread_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         Ok(Stmt::ChildThread(Box::new(
             self.block(Self::statement, true)?,
         )))
     }
 
-    fn switch_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn switch_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let val = self.expr(0)?;
         let block = self.block(Self::case_statement, false)?;
 
         Ok(Stmt::Switch(val, Box::new(block)))
     }
 
-    fn case_statement(&mut self) -> Result<Stmt, KalmarError> {
+    fn case_statement(&mut self) -> Result<Stmt, NewKalmarError> {
         let case = match self.kind()? {
             TokenKind::KwDefault => {
                 self.pop()?;
@@ -508,7 +508,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         Ok(Stmt::Case(case, Box::new(block)))
     }
 
-    fn expr(&mut self, min_prec: u8) -> Result<Expr, KalmarError> {
+    fn expr(&mut self, min_prec: u8) -> Result<Expr, NewKalmarError> {
         let t = *self.pop()?;
         let mut left = match t.kind {
             TokenKind::Number | TokenKind::Boolean => Expr::Identifier(t),
@@ -548,7 +548,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
             | TokenKind::Less
             | TokenKind::LessEq
             | TokenKind::And => {
-                let op = UnOp::try_from(t.kind)?;
+                let op = UnOp::try_from(t)?;
                 let r = self.expr(op.precedence().1)?;
                 Expr::UnOp(op, Box::new(r))
             }
@@ -557,7 +557,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                 self.assert(TokenKind::RParen)?;
                 expr
             }
-            _ => return Err(KalmarError::ExpectedExpr(t.kind)),
+            _ => return Err(NewKalmarError::ExpectedExpr(t)),
         };
 
         loop {
@@ -613,73 +613,73 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
         Ok(left)
     }
 
-    fn bound_check_tokens(&self) -> Result<(), KalmarError> {
+    fn bound_check_tokens(&self) -> Result<(), NewKalmarError> {
         if self.at_end() {
-            return Err(KalmarError::UnexpectedEndTokenStream);
+            return Err(NewKalmarError::UnexpectedEndTokenStream);
         }
         Ok(())
     }
 
-    fn pop(&mut self) -> Result<&Token, KalmarError> {
+    fn pop(&mut self) -> Result<&Token, NewKalmarError> {
         self.bound_check_tokens()?;
         self.curr += 1;
         Ok(self.tokens.get(self.curr - 1).unwrap())
     }
 
-    fn kind(&mut self) -> Result<TokenKind, KalmarError> {
+    fn kind(&mut self) -> Result<TokenKind, NewKalmarError> {
         self.bound_check_tokens()?;
         Ok(self.tokens.get(self.curr).unwrap().kind)
     }
 
-    fn consume(&mut self, kind: TokenKind) -> Result<&Token, KalmarError> {
+    fn consume(&mut self, kind: TokenKind) -> Result<&Token, NewKalmarError> {
         let t = self.pop()?;
         if t.kind == kind {
             return Ok(t);
         }
 
-        Err(KalmarError::UnexpectedToken(kind, t.kind))
+        Err(NewKalmarError::UnexpectedToken(*t, kind))
     }
 
-    fn peek(&mut self, kind: TokenKind) -> Result<bool, KalmarError> {
+    fn peek(&mut self, kind: TokenKind) -> Result<bool, NewKalmarError> {
         self.bound_check_tokens()?;
         let tok = self.tokens.get(self.curr).unwrap();
         Ok(tok.kind == kind)
     }
 
-    fn peek_over_newlines(&mut self, kind: TokenKind) -> Result<bool, KalmarError> {
+    fn peek_over_newlines(&mut self, kind: TokenKind) -> bool {
         let mut i = self.curr;
         while let Some(t) = self.tokens.get(i) {
             if t.kind != TokenKind::Newline {
-                return Ok(t.kind == kind);
+                return t.kind == kind;
             }
             i += 1;
         }
 
-        Err(KalmarError::UnexpectedEndTokenStream)
+        false
     }
 
-    fn assert(&mut self, kind: TokenKind) -> Result<(), KalmarError> {
-        let k = self.pop()?.kind;
-        if k != kind {
-            Err(KalmarError::UnexpectedToken(kind, k))
+    fn assert(&mut self, kind: TokenKind) -> Result<(), NewKalmarError> {
+        let t = self.pop()?;
+        if t.kind != kind {
+            Err(NewKalmarError::UnexpectedToken(*t, kind))
         } else {
             Ok(())
         }
     }
 
-    fn skip_newlines(&mut self) -> Result<(), KalmarError> {
+    fn skip_newlines(&mut self) -> Result<(), NewKalmarError> {
         while self.kind()? == TokenKind::Newline {
             self.pop()?;
         }
         Ok(())
     }
 
-    fn rewind(&mut self) -> Result<(), KalmarError> {
+    fn rewind(&mut self) -> Result<(), NewKalmarError> {
         if self.curr > 0 {
             self.curr -= 1;
             return Ok(());
         }
-        Err(KalmarError::CursorOutOfBounds(0, 0))
+        panic!()
     }
 
     fn at_end(&self) -> bool {

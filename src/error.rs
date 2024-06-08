@@ -1,12 +1,15 @@
-use std::{fmt, io::Write, rc::Rc};
+use std::error::Error;
+use std::io::Write;
 use thiserror::Error;
 
 use crate::compiler::Op;
-use crate::lexer::{Token, TokenKind};
+use crate::lexer::{Literal, Token, TokenKind};
 use crate::sem_checker::Type;
+use crate::StringManager;
 use std::io::IsTerminal;
 
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+/*
 pub struct ContextPrinter<'a> {
     ctxt: Vec<&'a str>,
 }
@@ -62,31 +65,12 @@ impl<'a> ContextPrinter<'a> {
         Ok(())
     }
 }
-
-#[derive(Debug)]
-pub struct Error {
-    pub pos: (usize, usize),
-    pub kind: ErrorKind,
-    pub underline_len: usize,
-}
-
-impl Error {
-    pub fn new(pos: (usize, usize), kind: ErrorKind) -> Self {
-        let l = kind.get_len();
-        Self {
-            pos,
-            kind,
-            underline_len: l,
-        }
-    }
-}
+*/
 
 #[derive(Error, Debug)]
 pub enum KalmarError {
     #[error("unexpected character `{0}` when lexing")]
     UnexpectedChar(char),
-    #[error("could not parse `{0}` as int")]
-    IntParseError(String),
     #[error("unexpected token: expected `{0}`, found `{1}`")]
     UnexpectedToken(TokenKind, TokenKind),
     #[error("expected `{0}` operator, found `{1}`")]
@@ -125,61 +109,142 @@ pub enum KalmarError {
     BaseMissingNumber(String),
 }
 
-#[derive(Debug)]
-pub enum ErrorKind {
-    UnexpectedChar(char),
-    ExpectedBinOp(Rc<Token>),
-    UnexpectedToken(TokenKind, Rc<Token>),
-    ExpectedStmt(Rc<Token>),
-    ExpectedExpr(Rc<Token>),
-    RedeclaredLabel(Rc<Token>),
-    RedeclaredScr(Rc<Token>),
+pub enum NewKalmarError {
+    UnexpectedChar(Token),
+    BaseMissingNumber(Token),
+    UnexpectedToken(Token, TokenKind),
+    InvalidOperator(&'static str, Token),
+    ExpectedStmt(Token),
+    ExpectedExpr(Token),
+    UnexpectedEndTokenStream,
+    TooManyLabels(Token),
+    RedeclaredScript(Token),
+    RedeclaredLabel(Token),
 }
 
-impl ErrorKind {
-    fn get_len(&self) -> usize {
-        match self {
-            Self::UnexpectedChar(_) => 1,
-            Self::ExpectedStmt(t)
-            | Self::ExpectedBinOp(t)
-            | Self::ExpectedExpr(t)
-            | Self::UnexpectedToken(_, t)
-            | Self::RedeclaredLabel(t)
-            | Self::RedeclaredScr(t) => match t.kind {
-                TokenKind::Number | TokenKind::Identifier => format!("{}", t.val.as_ref().unwrap()),
-                _ => format!("{}", t.kind),
-            }
-            .len(),
+pub struct ErrorPrinter<'err, 'smgr> {
+    file_name: &'err str,
+    literals: &'err StringManager<'smgr>,
+}
+
+impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
+    pub fn new(file_name: &'err str, literals: &'err StringManager<'smgr>) -> Self {
+        Self {
+            file_name,
+            literals,
         }
     }
-}
 
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnexpectedChar(c) => write!(f, "unexpected character: {}", c),
-            Self::ExpectedBinOp(t) => {
-                let i = match t.kind {
-                    TokenKind::Number | TokenKind::Identifier => {
-                        format!("{}", t.val.as_ref().unwrap())
-                    }
-                    _ => format!("{}", t.kind),
+    pub fn print(&self, error: &NewKalmarError) -> Result<(), std::io::Error> {
+        let (msg, line, line_num, col_num, len) = match error {
+            NewKalmarError::UnexpectedChar(t) => {
+                let line = self.literals.err_context(t.line);
+                let char = match t.val.unwrap() {
+                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
+                    _ => panic!(),
                 };
-                write!(f, "expected binary operator, found: {}", i)
+                let msg = format!("unexpected character: {}", char);
+                (msg, line, t.line + 1, t.col, t.len)
             }
-            Self::UnexpectedToken(ex, fnd) => {
-                write!(f, "expected token of type: {:?}, found: {:?}", ex, fnd.kind)
+            NewKalmarError::BaseMissingNumber(t) => {
+                let line = self.literals.err_context(t.line);
+                let base = match t.val.unwrap() {
+                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
+                    _ => panic!(),
+                };
+                let msg = format!("found base prefix `{}`, but missing number", base);
+                (msg, line, t.line + 1, t.col, t.len)
             }
-            Self::ExpectedStmt(t) => write!(f, "expected statement, found: {:?}", t.kind),
-            Self::ExpectedExpr(t) => write!(f, "expected expression, found: {:?}", t.kind),
-            Self::RedeclaredLabel(t) => write!(f, "label: {} redeclared", t.val.as_ref().unwrap()),
-            Self::RedeclaredScr(t) => write!(f, "script: {} redeclared", t.val.as_ref().unwrap()),
-        }
-    }
-}
+            NewKalmarError::UnexpectedToken(found, expected) => {
+                let line = self.literals.err_context(found.line);
+                let msg = format!("expected `{}` token, found `{}`", expected, found.kind);
+                (msg, line, found.line + 1, found.col, found.len)
+            }
+            NewKalmarError::InvalidOperator(expected, found) => {
+                let line = self.literals.err_context(found.line);
+                let msg = format!("expected `{}` operator, found `{}`", expected, found.kind);
+                (msg, line, found.line + 1, found.col, found.len)
+            }
+            NewKalmarError::ExpectedStmt(stmt) => {
+                let line = self.literals.err_context(stmt.line);
+                let msg = format!("expected statement, found `{}`", stmt.kind);
+                (msg, line, stmt.line + 1, stmt.col, stmt.len)
+            }
+            NewKalmarError::ExpectedExpr(stmt) => {
+                let line = self.literals.err_context(stmt.line);
+                let msg = format!("expected expression, found `{}`", stmt.kind);
+                (msg, line, stmt.line + 1, stmt.col, stmt.len)
+            }
+            NewKalmarError::UnexpectedEndTokenStream => {
+                let line = self.literals.lines.last().unwrap();
+                let msg = "unexpected end of token stream".to_string();
+                (msg, *line, self.literals.lines.len(), line.len(), 1)
+            }
+            NewKalmarError::TooManyLabels(t) => {
+                let line = self.literals.err_context(t.line);
+                let lbl = match t.val.unwrap() {
+                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
+                    _ => panic!(),
+                };
+                let msg = format!(
+                    "cannot create new label `{}`, already at max 16 labels",
+                    lbl
+                );
+                (msg, line, t.line + 1, t.col, t.len)
+            }
+            NewKalmarError::RedeclaredScript(t) | NewKalmarError::RedeclaredLabel(t) => {
+                let line = self.literals.err_context(t.line);
+                let lbl = match t.val.unwrap() {
+                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
+                    _ => panic!(),
+                };
+                let msg = format!("redeclaration of `{}`", lbl);
+                (msg, line, t.line + 1, t.col, t.len)
+            }
+            _ => panic!(),
+        };
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.kind)
+        let mut stderr = StandardStream::stderr(if std::io::stdin().is_terminal() {
+            ColorChoice::Always
+        } else {
+            ColorChoice::Never
+        });
+        let mut c = ColorSpec::new();
+
+        macro_rules! writeln_colour {
+            ($colour:ident, $($arg:tt)*) => {{
+                stderr.set_color(c.set_fg(Some(Color::$colour)))?;
+                writeln!(&mut stderr, $($arg)*)?;
+            }};
+            ($($arg:tt)*) => {{
+                stderr.set_color(c.set_fg(None))?;
+                writeln!(&mut stderr, $($arg)*)?;
+            }};
+        }
+
+        macro_rules! write_colour {
+            ($colour:ident, $($arg:tt)*) => {{
+                stderr.set_color(c.set_fg(Some(Color::$colour)))?;
+                write!(&mut stderr, $($arg)*)?;
+            }};
+            ($($arg:tt)*) => {{
+                stderr.set_color(c.set_fg(None))?;
+                write!(&mut stderr, $($arg)*)?;
+            }};
+        }
+
+        let margin = line_num.to_string().len();
+
+        write_colour!("{}:{}:{}: ", self.file_name, line_num, col_num);
+        write_colour!(Red, "error");
+        writeln_colour!(": {}", msg);
+
+        write_colour!("{:<margin$} | ", line_num);
+        writeln_colour!("{}", line);
+
+        write_colour!("{:>margin$} | ", "");
+        writeln_colour!(Red, "{:>col_num$}{:^>len$}", "", "");
+        stderr.set_color(c.set_fg(None))?;
+        Ok(())
     }
 }

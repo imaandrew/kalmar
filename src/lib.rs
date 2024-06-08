@@ -1,10 +1,10 @@
-use error::KalmarError;
+use error::{ErrorPrinter, KalmarError};
 use indexmap::IndexSet;
 use lexer::Token;
 use parser::Stmt;
 
 mod compiler;
-mod decompiler;
+//mod decompiler;
 mod error;
 mod lexer;
 mod optimizer;
@@ -146,7 +146,12 @@ impl<'a> Compiler<'a> {
             Ok(t) => {
                 self.tokens = t;
             }
-            Err(e) => e.iter().for_each(|e| println!("{}", e)),
+            Err(e) => {
+                let ep = ErrorPrinter::new("REPLACE.scr", &self.literals);
+                for err in e {
+                    ep.print(&err).unwrap();
+                }
+            }
         }
         Ok(self)
     }
@@ -155,7 +160,10 @@ impl<'a> Compiler<'a> {
         let mut parser = parser::Parser::new(&self.tokens, &mut self.literals);
         match parser.parse(self.verbose) {
             Ok(s) => self.stmts = s,
-            Err(e) => return Err(e),
+            Err(e) => {
+                let ep = ErrorPrinter::new("REPLACE.scr", &self.literals);
+                ep.print(&e).unwrap();
+            }
         }
         Ok(self)
     }
@@ -164,7 +172,11 @@ impl<'a> Compiler<'a> {
         let mut sem = sem_checker::SemChecker::new(&mut self.literals);
         match sem.check_ast(&self.stmts) {
             Ok(_) => Ok(self),
-            Err(e) => Err(e),
+            Err(e) => {
+                let ep = ErrorPrinter::new("REPLACE.scr", &self.literals);
+                ep.print(&e).unwrap();
+                Ok(self)
+            }
         }
     }
 
@@ -247,7 +259,7 @@ pub struct Decompiler<'a> {
     base_addr: u32,
     syms: Vec<(&'a str, u32)>,
 }
-
+/*
 impl<'a> Decompiler<'a> {
     pub fn parse(mut self) -> Result<Self, KalmarError> {
         let mut de = decompiler::Decompiler::new(&mut self.literals);
@@ -262,3 +274,4 @@ impl<'a> Decompiler<'a> {
         &self.stmts
     }
 }
+*/

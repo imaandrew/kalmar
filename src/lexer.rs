@@ -3,7 +3,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::{error::KalmarError, StringManager, SymbolIndex};
+use crate::{error::NewKalmarError, StringManager, SymbolIndex};
 
 use std::string::ToString;
 use strum_macros::Display;
@@ -119,6 +119,8 @@ pub enum TokenKind {
     Boolean,
     #[strum(disabled)]
     Whitespace,
+    #[strum(disabled)]
+    None,
     Eof,
 }
 
@@ -223,7 +225,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         }
     }
 
-    pub fn lex(&mut self) -> Result<Vec<Token>, Vec<KalmarError>> {
+    pub fn lex(&mut self) -> Result<Vec<Token>, Vec<NewKalmarError>> {
         let mut tokens = vec![];
         let mut err = vec![];
         while !self.at_end() {
@@ -242,7 +244,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         }
     }
 
-    fn lex_token(&mut self) -> Result<Token, KalmarError> {
+    fn lex_token(&mut self) -> Result<Token, NewKalmarError> {
         let c = self.next();
         match c {
             '(' => Ok(self.create_token(TokenKind::LParen)),
@@ -287,11 +289,21 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
             }
             _ if c.is_ascii_digit() => self.number(c),
             _ if c.is_alphabetic() || c == '_' => Ok(self.identifier()?),
-            _ => Err(KalmarError::UnexpectedChar(c)),
+            _ => {
+                let idx = self
+                    .literals
+                    .add(&self.literals.text[self.curr - 1..self.curr]);
+                let t = self.create_token_literal(
+                    TokenKind::None,
+                    self.curr - 1,
+                    Some(Literal::Identifier(idx)),
+                );
+                Err(NewKalmarError::UnexpectedChar(t))
+            }
         }
     }
 
-    fn number(&mut self, c: char) -> Result<Token, KalmarError> {
+    fn number(&mut self, c: char) -> Result<Token, NewKalmarError> {
         let mut base = 10;
         let mut start = self.curr - 1;
         if c == '0' {
@@ -301,9 +313,17 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                     self.next();
                     start += 1;
                     if !self.consume_decimal_digits() {
-                        return Err(KalmarError::BaseMissingNumber(String::from(
-                            &self.literals.text[start..self.curr],
-                        )));
+                        let idx = self
+                            .literals
+                            .add(&self.literals.text[self.curr - 2..self.curr]);
+                        let t = Token {
+                            kind: TokenKind::None,
+                            val: Some(Literal::Identifier(idx)),
+                            len: 2,
+                            line: self.line,
+                            col: self.col as usize - 1,
+                        };
+                        return Err(NewKalmarError::BaseMissingNumber(t));
                     }
                 }
                 'o' => {
@@ -311,9 +331,17 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                     self.next();
                     start += 1;
                     if !self.consume_decimal_digits() {
-                        return Err(KalmarError::BaseMissingNumber(String::from(
-                            &self.literals.text[start..self.curr],
-                        )));
+                        let idx = self
+                            .literals
+                            .add(&self.literals.text[self.curr - 2..self.curr]);
+                        let t = Token {
+                            kind: TokenKind::None,
+                            val: Some(Literal::Identifier(idx)),
+                            len: 2,
+                            line: self.line,
+                            col: self.col as usize - 1,
+                        };
+                        return Err(NewKalmarError::BaseMissingNumber(t));
                     }
                 }
                 'x' => {
@@ -321,9 +349,17 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                     self.next();
                     start += 1;
                     if !self.consume_hex_digits() {
-                        return Err(KalmarError::BaseMissingNumber(String::from(
-                            &self.literals.text[start..self.curr],
-                        )));
+                        let idx = self
+                            .literals
+                            .add(&self.literals.text[self.curr - 2..self.curr]);
+                        let t = Token {
+                            kind: TokenKind::None,
+                            val: Some(Literal::Identifier(idx)),
+                            len: 2,
+                            line: self.line,
+                            col: self.col as usize - 1,
+                        };
+                        return Err(NewKalmarError::BaseMissingNumber(t));
                     }
                 }
                 '0'..='9' => {
@@ -381,7 +417,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         non_empty
     }
 
-    fn identifier(&mut self) -> Result<Token, KalmarError> {
+    fn identifier(&mut self) -> Result<Token, NewKalmarError> {
         let start = self.curr - 1;
 
         while self.peek().is_alphabetic() || self.peek() == '_' {
