@@ -9,13 +9,24 @@ use std::string::ToString;
 use strum_macros::Display;
 use strum_macros::EnumString;
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Span {
+    pub line: usize,
+    pub col: usize,
+    pub len: usize,
+}
+
+impl Span {
+    pub fn new(line: usize, col: usize, len: usize) -> Self {
+        Self { line, col, len }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct Token {
     pub kind: TokenKind,
     pub val: Option<Literal>,
-    pub col: usize,
-    pub line: usize,
-    pub len: usize,
+    pub span: Span,
 }
 
 #[derive(Copy, Clone, Display, Debug, EnumString, PartialEq, Eq)]
@@ -319,9 +330,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                         let t = Token {
                             kind: TokenKind::None,
                             val: Some(Literal::Identifier(idx)),
-                            len: 2,
-                            line: self.line,
-                            col: self.col as usize - 1,
+                            span: Span::new(self.line, self.col as usize - 1, 2),
                         };
                         return Err(KalmarError::BaseMissingNumber(t));
                     }
@@ -337,9 +346,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                         let t = Token {
                             kind: TokenKind::None,
                             val: Some(Literal::Identifier(idx)),
-                            len: 2,
-                            line: self.line,
-                            col: self.col as usize - 1,
+                            span: Span::new(self.line, self.col as usize - 1, 2),
                         };
                         return Err(KalmarError::BaseMissingNumber(t));
                     }
@@ -355,9 +362,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                         let t = Token {
                             kind: TokenKind::None,
                             val: Some(Literal::Identifier(idx)),
-                            len: 2,
-                            line: self.line,
-                            col: self.col as usize - 1,
+                            span: Span::new(self.line, self.col as usize - 1, 2),
                         };
                         return Err(KalmarError::BaseMissingNumber(t));
                     }
@@ -471,9 +476,11 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         Token {
             kind,
             val: literal,
-            len: self.curr - start,
-            line: self.line,
-            col: self.col as usize - (self.curr - start - 1),
+            span: Span::new(
+                self.line,
+                self.col as usize - self.curr + start + 1,
+                self.curr - start,
+            ),
         }
     }
 }

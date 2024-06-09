@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     error::KalmarError,
-    lexer::{Literal, Token, TokenKind},
+    lexer::{Literal, Span, Token, TokenKind},
     StringManager,
 };
 
@@ -282,14 +282,6 @@ impl BinOp {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Span {
-    pub line: usize,
-    pub col: usize,
-    pub len: usize,
-}
-
-
 #[derive(Debug)]
 pub struct Expr {
     pub kind: ExprKind,
@@ -298,14 +290,7 @@ pub struct Expr {
 
 impl Expr {
     fn new(kind: ExprKind, t: &Token) -> Self {
-        Self {
-            kind,
-            span: Span {
-                line: t.line,
-                col: t.col,
-                len: t.len,
-            },
-        }
+        Self { kind, span: t.span }
     }
 }
 
@@ -552,11 +537,11 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                     let rb = self.consume(TokenKind::RBracket)?;
                     Expr {
                         kind: ExprKind::Array(t, Box::new(idx)),
-                        span: Span {
-                            line: t.line,
-                            col: t.col,
-                            len: rb.col + rb.len - t.len,
-                        },
+                        span: Span::new(
+                            t.span.line,
+                            t.span.col,
+                            rb.span.col + rb.span.len - t.span.col,
+                        ),
                     }
                 }
                 TokenKind::LParen => {
@@ -570,11 +555,11 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                                 self.parsing_func_args = false;
                                 return Ok(Expr {
                                     kind: ExprKind::FuncCall(t, args),
-                                    span: Span {
-                                        line: t.line,
-                                        col: t.col,
-                                        len: rp.col + rp.len - t.col,
-                                    },
+                                    span: Span::new(
+                                        t.span.line,
+                                        t.span.col,
+                                        rp.span.col + rp.span.len - t.span.col,
+                                    ),
                                 });
                             }
                             TokenKind::Comma => {
@@ -600,11 +585,7 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                 let s = r.span;
                 Expr {
                     kind: ExprKind::UnOp(op, Box::new(r)),
-                    span: Span {
-                        line: t.line,
-                        col: t.col,
-                        len: s.col + s.len - t.col,
-                    },
+                    span: Span::new(t.span.line, t.span.col, s.col + s.len - t.span.col),
                 }
             }
             TokenKind::LParen => {
@@ -612,11 +593,11 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                 let rp = self.consume(TokenKind::RParen)?;
                 Expr {
                     kind: expr.kind,
-                    span: Span {
-                        line: t.line,
-                        col: t.col,
-                        len: rp.col + rp.len - t.col,
-                    },
+                    span: Span::new(
+                        t.span.line,
+                        t.span.col,
+                        rp.span.col + rp.span.len - t.span.col,
+                    ),
                 }
             }
             _ => return Err(KalmarError::ExpectedExpr(t)),
@@ -668,11 +649,11 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
                         let s = right.span;
                         left = Expr {
                             kind: ExprKind::ArrayAssign(*lit, Box::new(right)),
-                            span: Span {
-                                line: left.span.line,
-                                col: left.span.col,
-                                len: s.col + s.len - left.span.col,
-                            },
+                            span: Span::new(
+                                left.span.line,
+                                left.span.col,
+                                s.col + s.len - left.span.col,
+                            ),
                         };
                         continue;
                     }
@@ -682,11 +663,11 @@ impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
             let r_span = right.span;
             left = Expr {
                 kind: ExprKind::BinOp(op, Box::new(left), Box::new(right)),
-                span: Span {
-                    line: l_span.line,
-                    col: l_span.col,
-                    len: r_span.col + r_span.len - l_span.col,
-                },
+                span: Span::new(
+                    l_span.line,
+                    l_span.col,
+                    r_span.col + r_span.len - l_span.col,
+                ),
             };
         }
         Ok(left)

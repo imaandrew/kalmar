@@ -2,8 +2,7 @@ use std::io::Write;
 use thiserror::Error;
 
 use crate::compiler::Op;
-use crate::lexer::{Literal, Token, TokenKind};
-use crate::parser::Span;
+use crate::lexer::{Literal, Span, Token, TokenKind};
 use crate::sem_checker::Type;
 use crate::StringManager;
 use std::io::IsTerminal;
@@ -116,42 +115,42 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
     pub fn print(&self, error: &KalmarError) -> Result<(), std::io::Error> {
         let (msg, line, line_num, col_num, len) = match error {
             KalmarError::UnexpectedChar(t) => {
-                let line = self.literals.err_context(t.line);
+                let line = self.literals.err_context(t.span.line);
                 let char = match t.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => panic!(),
                 };
                 let msg = format!("unexpected character: {}", char);
-                (msg, line, t.line, t.col, t.len)
+                (msg, line, t.span.line, t.span.col, t.span.len)
             }
             KalmarError::BaseMissingNumber(t) => {
-                let line = self.literals.err_context(t.line);
+                let line = self.literals.err_context(t.span.line);
                 let base = match t.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => panic!(),
                 };
                 let msg = format!("found base prefix `{}`, but missing number", base);
-                (msg, line, t.line, t.col, t.len)
+                (msg, line, t.span.line, t.span.col, t.span.len)
             }
             KalmarError::UnexpectedToken(found, expected) => {
-                let line = self.literals.err_context(found.line);
+                let line = self.literals.err_context(found.span.line);
                 let msg = format!("expected `{}` token, found `{}`", expected, found.kind);
-                (msg, line, found.line, found.col, found.len)
+                (msg, line, found.span.line, found.span.col, found.span.len)
             }
             KalmarError::InvalidOperator(expected, found) => {
-                let line = self.literals.err_context(found.line);
+                let line = self.literals.err_context(found.span.line);
                 let msg = format!("expected `{}` operator, found `{}`", expected, found.kind);
-                (msg, line, found.line, found.col, found.len)
+                (msg, line, found.span.line, found.span.col, found.span.len)
             }
             KalmarError::ExpectedStmt(stmt) => {
-                let line = self.literals.err_context(stmt.line);
+                let line = self.literals.err_context(stmt.span.line);
                 let msg = format!("expected statement, found `{}`", stmt.kind);
-                (msg, line, stmt.line, stmt.col, stmt.len)
+                (msg, line, stmt.span.line, stmt.span.col, stmt.span.len)
             }
             KalmarError::ExpectedExpr(stmt) => {
-                let line = self.literals.err_context(stmt.line);
+                let line = self.literals.err_context(stmt.span.line);
                 let msg = format!("expected expression, found `{}`", stmt.kind);
-                (msg, line, stmt.line, stmt.col, stmt.len)
+                (msg, line, stmt.span.line, stmt.span.col, stmt.span.len)
             }
             KalmarError::UnexpectedEndTokenStream => {
                 let line = self.literals.lines.last().unwrap();
@@ -159,7 +158,7 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                 (msg, *line, self.literals.lines.len() - 1, line.len(), 1)
             }
             KalmarError::TooManyLabels(t) => {
-                let line = self.literals.err_context(t.line);
+                let line = self.literals.err_context(t.span.line);
                 let lbl = match t.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => panic!(),
@@ -168,16 +167,16 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                     "cannot create new label `{}`, already at max 16 labels",
                     lbl
                 );
-                (msg, line, t.line, t.col, t.len)
+                (msg, line, t.span.line, t.span.col, t.span.len)
             }
             KalmarError::RedeclaredScript(t) | KalmarError::RedeclaredLabel(t) => {
-                let line = self.literals.err_context(t.line);
+                let line = self.literals.err_context(t.span.line);
                 let lbl = match t.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => panic!(),
                 };
                 let msg = format!("redeclaration of `{}`", lbl);
-                (msg, line, t.line, t.col, t.len)
+                (msg, line, t.span.line, t.span.col, t.span.len)
             }
             KalmarError::InvalidType(span, expected, found) => {
                 let line = self.literals.err_context(span.line);
@@ -208,22 +207,22 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                 )
             }
             KalmarError::UndefinedFunction(f) => {
-                let line = self.literals.err_context(f.line);
+                let line = self.literals.err_context(f.span.line);
                 let func = match f.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => panic!(),
                 };
                 let msg = format!("reference to undefined function `{}`", func);
-                (msg, line, f.line, f.col, f.len)
+                (msg, line, f.span.line, f.span.col, f.span.len)
             }
             KalmarError::UndefinedSymbol(s) => {
-                let line = self.literals.err_context(s.line);
+                let line = self.literals.err_context(s.span.line);
                 let sym = match s.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => panic!(),
                 };
                 let msg = format!("reference to undefined symbol `{}`", sym);
-                (msg, line, s.line, s.col, s.len)
+                (msg, line, s.span.line, s.span.col, s.span.len)
             }
         };
 

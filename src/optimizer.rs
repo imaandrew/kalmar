@@ -1,7 +1,7 @@
 use crate::{
     lexer::Literal,
-    lexer::{Token, TokenKind},
-    parser::{BinOp, Expr, ExprKind, Span, Stmt, UnOp},
+    lexer::{Span, Token, TokenKind},
+    parser::{BinOp, Expr, ExprKind, Stmt, UnOp},
 };
 
 pub fn optimize_stmts(stmts: &mut [Stmt]) {
@@ -89,22 +89,16 @@ macro_rules! generate_binops {
                 match op {
                 $(
                     BinOp::$binop => match (&l.kind, &r.kind) {
-                        (ExprKind::Identifier(Token { val: Some(Literal::Number(x)), line, col, .. }), ExprKind::Identifier(Token { val: Some(Literal::Number(y)), len: len2, col: col2, .. })) => {
+                        (ExprKind::Identifier(Token { val: Some(Literal::Number(x)), span: Span {line, col, ..}, .. }), ExprKind::Identifier(Token { val: Some(Literal::Number(y)), span: Span {len: len2, col: col2, ..}, .. })) => {
                             let lit = Literal::$type(*x $op *y);
                             let token = Token {
                                 kind: TokenKind::Number,
                                 val: Some(lit),
-                                line: *line,
-                                col: *col,
-                                len: col2 + len2 - col,
+                                span: Span::new(*line, *col, col2 + len2 - col)
                             };
                             *$expr = Expr {
                                 kind: ExprKind::Identifier(token),
-                                span: Span {
-                                    line: *line,
-                                    col: *col,
-                                    len: token.len
-                                }
+                                span: Span::new(*line, *col, token.span.len)
                             };
                         }
                         _ => (),
@@ -139,20 +133,17 @@ fn fold_expr_op(expr: &mut Expr) {
             UnOp::Minus => match e.kind {
                 ExprKind::Identifier(Token {
                     val: Some(Literal::Number(n)),
-                    len,
-                    col,
+                    span: Span { len, col, .. },
                     ..
                 }) => {
                     let lit = Literal::Number(-n);
                     let token = Token {
                         kind: TokenKind::Number,
                         val: Some(lit),
-                        col: expr.span.col,
-                        line: expr.span.line,
-                        len: col + len - expr.span.col,
+                        span: Span::new(expr.span.line, expr.span.col, col + len - expr.span.col),
                     };
                     expr.kind = ExprKind::Identifier(token);
-                    expr.span.len = token.len;
+                    expr.span.len = token.span.len;
                 }
                 _ => {
                     fold_expr_op(e);

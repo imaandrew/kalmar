@@ -6,7 +6,7 @@ use std::{
 use crate::{
     compiler::Op,
     error::DecompilerError,
-    lexer::{Literal, Number, Token, TokenKind},
+    lexer::{Literal, Number, Span, Token, TokenKind},
     parser::{BinOp, Expr, ExprKind, Stmt, UnOp},
     StringManager,
 };
@@ -76,13 +76,10 @@ impl<'a, 'b> Decompiler<'a, 'b> {
         }
 
         Ok(Stmt::Script(
-            Token {
-                kind: TokenKind::Identifier,
-                val: Some(Literal::Identifier(self.literals.add("yoooo"))),
-                col: 0,
-                line: 0,
-                len: 0,
-            },
+            new_token(
+                TokenKind::Identifier,
+                Some(Literal::Identifier(self.literals.add("yoooo"))),
+            ),
             Box::new(Stmt::Block(block)),
         ))
     }
@@ -1026,9 +1023,7 @@ fn new_token(kind: TokenKind, val: Option<Literal>) -> Token {
     Token {
         kind,
         val,
-        col: 0,
-        line: 0,
-        len: 0,
+        span: Span::default(),
     }
 }
 
