@@ -1,8 +1,7 @@
-use std::error::Error;
 use std::io::Write;
 use thiserror::Error;
 
-use crate::compiler::Op;
+//use crate::compiler::Op;
 use crate::lexer::{Literal, Token, TokenKind};
 use crate::parser::Span;
 use crate::sem_checker::Type;
@@ -70,46 +69,19 @@ impl<'a> ContextPrinter<'a> {
 
 #[derive(Error, Debug)]
 pub enum KalmarError {
-    #[error("unexpected character `{0}` when lexing")]
-    UnexpectedChar(char),
-    #[error("unexpected token: expected `{0}`, found `{1}`")]
-    UnexpectedToken(TokenKind, TokenKind),
-    #[error("expected `{0}` operator, found `{1}`")]
-    InvalidOperator(&'static str, TokenKind),
-    #[error("expected statement, found `{0}`")]
-    ExpectedStmt(TokenKind),
-    #[error("expected expression, found `{0}`")]
-    ExpectedExpr(TokenKind),
-    #[error("script `{0}` redeclared")]
-    RedeclaredScript(String),
-    #[error("label `{0}` redeclared")]
-    RedeclaredLabel(String),
-    #[error("cannot have more than 16 labels per script")]
-    TooManyLabels,
     #[error("undeclared reference to `{0:?}`")]
     UndeclaredReference(Vec<String>),
-    #[error("mismatched types: expected `{0}`, found `{1}`")]
-    TypeMismatch(Type, Type),
-    #[error("mismatched types: expected one of `{0:?}`, found `{1}`")]
-    TypesMismatch(Vec<Type>, Type),
     #[error("opcode {0} is stating {1} args instead of expected {2}")]
-    UnexpectOpArgCount(Op, u32, u32),
+    UnexpectOpArgCount(u32, u32, u32),
     #[error("idk come up with something")]
     CursorOutOfBounds(usize, usize),
     #[error("unexpected end token")]
     UnexpectedEndToken,
     #[error("invalid opcode {0}")]
     InvalidOpcode(u32),
-    #[error("referencing undefined function `{0}`")]
-    UndefinedFunction(String),
-    #[error("referencing undefined symbol `{0}`")]
-    UndefinedSymbol(String),
-    #[error("unexpected end of token stream")]
-    UnexpectedEndTokenStream,
-    #[error("base prefix `{0}` missing number")]
-    BaseMissingNumber(String),
 }
 
+#[derive(Debug)]
 pub enum NewKalmarError {
     UnexpectedChar(Token),
     BaseMissingNumber(Token),
@@ -124,6 +96,8 @@ pub enum NewKalmarError {
     InvalidType(Span, Type, Type),
     InvalidTypes(Span, Vec<Type>, Type),
     UnequalTypes(Span, Type, Span, Type),
+    UndefinedFunction(Token),
+    UndefinedSymbol(Token),
 }
 
 pub struct ErrorPrinter<'err, 'smgr> {
@@ -232,6 +206,24 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                     l_span.col,
                     r_span.len + r_span.col - l_span.col,
                 )
+            }
+            NewKalmarError::UndefinedFunction(f) => {
+                let line = self.literals.err_context(f.line);
+                let func = match f.val.unwrap() {
+                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
+                    _ => panic!(),
+                };
+                let msg = format!("reference to undefined function `{}`", func);
+                (msg, line, f.line, f.col, f.len)
+            }
+            NewKalmarError::UndefinedSymbol(s) => {
+                let line = self.literals.err_context(s.line);
+                let sym = match s.val.unwrap() {
+                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
+                    _ => panic!(),
+                };
+                let msg = format!("reference to undefined symbol `{}`", sym);
+                (msg, line, s.line, s.col, s.len)
             }
         };
 

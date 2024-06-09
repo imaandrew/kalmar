@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use std::ops::Deref;
 
 use num_enum::TryFromPrimitive;
 use strum_macros::Display;
 
-use crate::error::KalmarError;
+use crate::error::NewKalmarError;
 use crate::lexer::{Literal, Token};
-use crate::parser::{BinOp, Expr, Stmt, UnOp};
+use crate::parser::{BinOp, Expr, ExprKind, Stmt, UnOp};
 use crate::StringManager;
 
 #[derive(TryFromPrimitive, Debug, PartialEq, Eq, Display)]
@@ -208,8 +207,8 @@ impl Op {
         })
     }
 
-    pub fn from_u32(op: u32) -> Result<Self, KalmarError> {
-        Op::try_from(op).map_err(|_| KalmarError::InvalidOpcode(op))
+    pub fn from_u32(op: u32) -> Self {
+        Op::try_from(op).unwrap()
     }
 }
 
@@ -218,7 +217,7 @@ pub struct Compiler<'cmplr, 'smgr> {
     syms: HashMap<&'cmplr str, u32>,
     num_labels: u32,
     base_addr: u32,
-    unresolved_syms: Vec<(&'cmplr str, u32)>,
+    unresolved_syms: Vec<(&'cmplr Token, u32)>,
     code: Vec<u32>,
 }
 
@@ -238,23 +237,26 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         self.syms.extend(syms)
     }
 
-    pub fn compile(&mut self, stmts: &'cmplr Vec<Stmt>) -> Result<Vec<u32>, KalmarError> {
+    pub fn compile(&mut self, stmts: &'cmplr Vec<Stmt>) -> Result<Vec<u32>, NewKalmarError> {
         for s in stmts {
             self.compile_stmt(s)?;
         }
 
-        for (s, a) in &self.unresolved_syms {
-            let s = self
-                .syms
-                .get(s)
-                .ok_or(KalmarError::UndefinedSymbol(s.to_string()))?;
+        for (t, a) in &self.unresolved_syms {
+            let s = match t.val.unwrap() {
+                Literal::Identifier(s) => self
+                    .syms
+                    .get(self.literals.get(s).unwrap())
+                    .ok_or(NewKalmarError::UndefinedSymbol(**t))?,
+                _ => unreachable!(),
+            };
             self.code[*a as usize] = *s;
         }
 
         Ok(std::mem::take(&mut self.code))
     }
 
-    fn compile_stmt(&mut self, stmt: &'cmplr Stmt) -> Result<(), KalmarError> {
+    fn compile_stmt(&mut self, stmt: &'cmplr Stmt) -> Result<(), NewKalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -296,14 +298,14 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 self.code.push(self.num_labels);
                 self.num_labels += 1;
             }
-            Stmt::Goto(Token { val: Some(n), .. }) => {
+            Stmt::Goto(t @ Token { val: Some(n), .. }) => {
                 let lbl = match n {
                     Literal::Identifier(i) => self.literals.get(*i).unwrap(),
                     _ => unreachable!(),
                 };
                 add_op!(Goto);
                 self.code.push(*self.syms.get(lbl).unwrap_or_else(|| {
-                    self.unresolved_syms.push((lbl, self.code.len() as u32));
+                    self.unresolved_syms.push((t, self.code.len() as u32));
                     &0
                 }))
             }
@@ -329,12 +331,12 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 add_op!(EndIf);
             }
             Stmt::If(e, s) => {
-                match e {
-                    Expr::BinOp(_, _, _) => self.compile_expr(e)?,
-                    Expr::UnOp(UnOp::Bang, e) => {
+                match &e.kind {
+                    ExprKind::BinOp(_, _, _) => self.compile_expr(e)?,
+                    ExprKind::UnOp(UnOp::Bang, e) => {
                         let start = self.code.len();
                         self.compile_expr(e)?;
-                        self.code[start] = match Op::from_u32(self.code[start])? {
+                        self.code[start] = match Op::from_u32(self.code[start]) {
                             Op::IfEq => Op::IfNe,
                             Op::IfNe => Op::IfEq,
                             Op::IfLt => Op::IfGe,
@@ -359,9 +361,9 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 self.compile_stmt(s)?;
             }
             Stmt::Switch(e, s) => {
-                match e {
-                    Expr::Array(_, _) => add_op!(Switch),
-                    Expr::Identifier(_) => add_op!(SwitchConst),
+                match e.kind {
+                    ExprKind::Array(_, _) => add_op!(Switch),
+                    ExprKind::Identifier(_) => add_op!(SwitchConst),
                     _ => panic!(),
                 }
                 self.compile_expr(e)?;
@@ -369,8 +371,8 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 add_op!(EndSwitch);
             }
             Stmt::Case(e, s) => {
-                match e {
-                    Expr::UnOp(op, e) => {
+                match &e.kind {
+                    ExprKind::UnOp(op, e) => {
                         match op {
                             UnOp::Equal => add_op!(CaseEq),
                             UnOp::NotEqual => add_op!(CaseNe),
@@ -383,7 +385,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                         }
                         self.compile_expr(e)?;
                     }
-                    Expr::BinOp(op, e, b) => {
+                    ExprKind::BinOp(op, e, b) => {
                         if matches!(op, BinOp::BitOr | BinOp::BitAnd) {
                             add_op!(CaseEq);
                         } else if *op == BinOp::Range {
@@ -400,10 +402,10 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                             add_op!(EndCaseGroup);
                         }
                     }
-                    Expr::Default => {
+                    ExprKind::Default => {
                         add_op!(CaseDefault);
                     }
-                    Expr::Identifier(_) | Expr::Array(_, _) => {
+                    ExprKind::Identifier(_) | ExprKind::Array(_, _) => {
                         add_op!(CaseEq);
                         self.compile_expr(e)?;
                     }
@@ -439,7 +441,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         Ok(())
     }
 
-    fn compile_expr(&mut self, expr: &'cmplr Expr) -> Result<(), KalmarError> {
+    fn compile_expr(&mut self, expr: &'cmplr Expr) -> Result<(), NewKalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -447,19 +449,19 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
             }};
         }
 
-        match expr {
-            Expr::Identifier(t) => match t.val.unwrap() {
+        match &expr.kind {
+            ExprKind::Identifier(t) => match t.val.unwrap() {
                 Literal::Number(n) => self.code.push(n.as_u32()),
                 Literal::Identifier(i) => {
                     let i = self.literals.get(i).unwrap();
                     self.code.push(*self.syms.get(i).unwrap_or_else(|| {
-                        self.unresolved_syms.push((i, self.code.len() as u32));
+                        self.unresolved_syms.push((t, self.code.len() as u32));
                         &0
                     }))
                 }
                 Literal::Boolean(b) => self.code.push(if b { 1 } else { 0 }),
             },
-            Expr::UnOp(_op, _expr) => {
+            ExprKind::UnOp(_op, _expr) => {
                 panic!("idk why this code is here i dont think its reachable lmao");
                 /*
                 let e = self.compile_expr(expr);
@@ -470,7 +472,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 }
                 */
             }
-            Expr::BinOp(op, l, r) => match op {
+            ExprKind::BinOp(op, l, r) => match op {
                 BinOp::BitAnd => {
                     add_op!(IfFlag);
                     self.compile_expr(l)?;
@@ -482,7 +484,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
                 BinOp::PlusEq => {
-                    if let Some(Literal::Number(n)) = r.get_literal() {
+                    if let Some(Literal::Number(n)) = r.kind.get_literal() {
                         if n.is_float() {
                             add_op!(AddF)
                         } else {
@@ -495,7 +497,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
                 BinOp::MinusEq => {
-                    if let Some(Literal::Number(n)) = r.get_literal() {
+                    if let Some(Literal::Number(n)) = r.kind.get_literal() {
                         if n.is_float() {
                             add_op!(SubF)
                         } else {
@@ -508,7 +510,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
                 BinOp::StarEq => {
-                    if let Some(Literal::Number(n)) = r.get_literal() {
+                    if let Some(Literal::Number(n)) = r.kind.get_literal() {
                         if n.is_float() {
                             add_op!(MulF)
                         } else {
@@ -521,7 +523,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
                 BinOp::DivEq => {
-                    if let Some(Literal::Number(n)) = r.get_literal() {
+                    if let Some(Literal::Number(n)) = r.kind.get_literal() {
                         if n.is_float() {
                             add_op!(DivF)
                         } else {
@@ -539,9 +541,9 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
                 BinOp::AndEq => {
-                    match r.deref() {
-                        Expr::Array(_, _) => add_op!(BitwiseAnd),
-                        Expr::Identifier(Token {
+                    match r.kind {
+                        ExprKind::Array(_, _) => add_op!(BitwiseAnd),
+                        ExprKind::Identifier(Token {
                             val: Some(Literal::Number(_)),
                             ..
                         }) => {
@@ -553,9 +555,9 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
                 BinOp::OrEq => {
-                    match r.deref() {
-                        Expr::Array(_, _) => add_op!(BitwiseOr),
-                        Expr::Identifier(Token {
+                    match r.kind {
+                        ExprKind::Array(_, _) => add_op!(BitwiseOr),
+                        ExprKind::Identifier(Token {
                             val: Some(Literal::Number(_)),
                             ..
                         }) => {
@@ -566,8 +568,8 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(l)?;
                     self.compile_expr(r)?;
                 }
-                BinOp::Assign => match r.deref() {
-                    Expr::Identifier(token)
+                BinOp::Assign => match &r.kind {
+                    ExprKind::Identifier(token)
                         if matches!(
                             token,
                             Token {
@@ -586,7 +588,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                             self.compile_expr(r)?;
                         }
                     }
-                    Expr::Identifier(i) if matches!(i.val.unwrap(), Literal::Identifier(_)) => {
+                    ExprKind::Identifier(i) if matches!(i.val.unwrap(), Literal::Identifier(_)) => {
                         if let Literal::Identifier(i) = i.val.unwrap() {
                             match self.literals.get(i).unwrap() {
                                 "Buffer" => add_op!(BufPeek),
@@ -596,17 +598,19 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                             self.compile_expr(l)?;
                         }
                     }
-                    Expr::Array(_, _) => {
+                    ExprKind::Array(_, _) => {
                         add_op!(Set);
                         self.compile_expr(l)?;
                         self.compile_expr(r)?;
                     }
-                    Expr::UnOp(UnOp::Ampersand, r) => {
+                    ExprKind::UnOp(UnOp::Ampersand, r) => {
                         add_op!(SetConst);
                         self.compile_expr(l)?;
                         self.compile_expr(r)?;
                     }
-                    Expr::FuncCall(i, a) if matches!(i.val.unwrap(), Literal::Identifier(_)) => {
+                    ExprKind::FuncCall(i, a)
+                        if matches!(i.val.unwrap(), Literal::Identifier(_)) =>
+                    {
                         if let Literal::Identifier(s) = i.val.unwrap() {
                             let f = self.get_func(self.literals.get(s).unwrap(), true).unwrap();
                             self.code.push(f.0);
@@ -667,7 +671,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                         if num_vars == 0 {
                             break;
                         };
-                        let op = match r.get_literal() {
+                        let op = match r.kind.get_literal() {
                             Some(Literal::Identifier(s))
                                 if self.literals.get(s).unwrap() == "Buffer" =>
                             {
@@ -697,24 +701,24 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
             },
-            Expr::Array(ident, index) => {
+            ExprKind::Array(ident, index) => {
                 let ident = match ident.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => unreachable!(),
                 };
 
-                let index = match index.get_literal() {
+                let index = match index.kind.get_literal() {
                     Some(Literal::Number(n)) => n.as_u32(),
                     _ => unreachable!(),
                 };
 
                 self.code.push(get_var(ident, index));
             }
-            Expr::FuncCall(func, args) => {
+            ExprKind::FuncCall(func, args) => {
                 let addr = match func.val.unwrap() {
                     Literal::Identifier(i) => {
                         self.get_func(self.literals.get(i).unwrap(), false)
-                            .ok_or_else(|| KalmarError::UndefinedFunction(i.to_string()))?
+                            .ok_or(NewKalmarError::UndefinedFunction(*func))?
                     }
                     _ => unreachable!(),
                 };
@@ -733,7 +737,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     }
                 }
             }
-            Expr::ArrayAssign(ident, expr) => {
+            ExprKind::ArrayAssign(ident, expr) => {
                 let ident = match ident.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => unreachable!(),
@@ -748,7 +752,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 }
                 self.compile_expr(expr)?;
             }
-            Expr::Default => {
+            ExprKind::Default => {
                 add_op!(CaseDefault);
             }
         }
