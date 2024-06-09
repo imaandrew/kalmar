@@ -1,7 +1,7 @@
 use crate::{
     lexer::Literal,
     lexer::{Token, TokenKind},
-    parser::{BinOp, Expr, Stmt, UnOp},
+    parser::{BinOp, Expr, ExprKind, Span, Stmt, UnOp},
 };
 
 pub fn optimize_stmts(stmts: &mut [Stmt]) {
@@ -82,24 +82,30 @@ fn fold_redundant_blocks(stmt: &mut Stmt) {
 
 macro_rules! generate_binops {
     ($expr:ident, $($binop:ident, $op:tt, $type:ident),*) => {
-        match $expr {
-            Expr::BinOp(op, l, r) => {
+        match &mut $expr.kind {
+            ExprKind::BinOp(op, l, r) => {
                 fold_expr_op(l);
                 fold_expr_op(r);
                 match op {
                 $(
-                    BinOp::$binop => match (l.as_ref(), r.as_ref()) {
-                        (Expr::Identifier(Token { val: Some(Literal::Number(x)), line, col, pos: pos1, .. }), Expr::Identifier(Token { val: Some(Literal::Number(y)), pos: pos2, len: len2, .. })) => {
+                    BinOp::$binop => match (&l.kind, &r.kind) {
+                        (ExprKind::Identifier(Token { val: Some(Literal::Number(x)), line, col, .. }), ExprKind::Identifier(Token { val: Some(Literal::Number(y)), len: len2, col: col2, .. })) => {
                             let lit = Literal::$type(*x $op *y);
                             let token = Token {
                                 kind: TokenKind::Number,
                                 val: Some(lit),
-                                pos: *pos1,
                                 line: *line,
                                 col: *col,
-                                len: (*len2 + *pos2) - *pos1,
+                                len: col2 + len2 - col,
                             };
-                            *$expr = Expr::Identifier(token);
+                            *$expr = Expr {
+                                kind: ExprKind::Identifier(token),
+                                span: Span {
+                                    line: *line,
+                                    col: *col,
+                                    len: token.len
+                                }
+                            };
                         }
                         _ => (),
                     }
@@ -128,27 +134,25 @@ fn fold_expr_op(expr: &mut Expr) {
         LessEq, <=, Boolean
     );
 
-    match expr {
-        Expr::UnOp(op, e) => match op {
-            UnOp::Minus => match &mut **e {
-                Expr::Identifier(Token {
+    match &mut expr.kind {
+        ExprKind::UnOp(op, e) => match op {
+            UnOp::Minus => match e.kind {
+                ExprKind::Identifier(Token {
                     val: Some(Literal::Number(n)),
-                    pos,
-                    col,
-                    line,
                     len,
+                    col,
                     ..
                 }) => {
-                    let lit = Literal::Number(-*n);
+                    let lit = Literal::Number(-n);
                     let token = Token {
                         kind: TokenKind::Number,
                         val: Some(lit),
-                        pos: *pos - 1,
-                        col: *col,
-                        line: *line,
-                        len: *len + 1,
+                        col: expr.span.col,
+                        line: expr.span.line,
+                        len: col + len - expr.span.col,
                     };
-                    *expr = Expr::Identifier(token)
+                    expr.kind = ExprKind::Identifier(token);
+                    expr.span.len = token.len;
                 }
                 _ => {
                     fold_expr_op(e);
@@ -158,12 +162,12 @@ fn fold_expr_op(expr: &mut Expr) {
                 fold_expr_op(e);
             }
         },
-        Expr::FuncCall(_, a) => {
+        ExprKind::FuncCall(_, a) => {
             for arg in a {
                 fold_expr_op(arg);
             }
         }
-        Expr::Array(_, idx) => {
+        ExprKind::Array(_, idx) => {
             fold_expr_op(idx);
         }
         _ => (),
