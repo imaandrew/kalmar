@@ -61,13 +61,13 @@ impl<'a> SemChecker<'a> {
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn check_ast(&mut self, ast: &'a Vec<Stmt>) -> Result<(), KalmarError> {
+    pub fn check_ast(&mut self, ast: &'a [Stmt]) -> Result<(), KalmarError> {
         self.check_nodes(ast)?;
         self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts)?;
         Ok(())
     }
 
-    fn check_nodes(&mut self, stmts: &'a Vec<Stmt>) -> Result<(), KalmarError> {
+    fn check_nodes(&mut self, stmts: &'a [Stmt]) -> Result<(), KalmarError> {
         for stmt in stmts {
             self.check_stmt_node(stmt)?;
         }

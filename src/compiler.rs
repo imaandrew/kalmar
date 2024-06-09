@@ -237,7 +237,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         self.syms.extend(syms)
     }
 
-    pub fn compile(&mut self, stmts: &'cmplr Vec<Stmt>) -> Result<Vec<u32>, KalmarError> {
+    pub fn compile(&mut self, stmts: &'cmplr [Stmt]) -> Result<Vec<u32>, KalmarError> {
         for s in stmts {
             self.compile_stmt(s)?;
         }

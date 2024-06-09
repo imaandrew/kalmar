@@ -344,7 +344,7 @@ impl Display for ExprKind {
 }
 
 pub struct Parser<'parsr, 'smgr> {
-    tokens: &'parsr Vec<Token>,
+    tokens: &'parsr [Token],
     literals: &'parsr mut StringManager<'smgr>,
     curr: usize,
     verbose: bool,
@@ -352,7 +352,7 @@ pub struct Parser<'parsr, 'smgr> {
 }
 
 impl<'parsr, 'smgr> Parser<'parsr, 'smgr> {
-    pub fn new(tokens: &'parsr Vec<Token>, literals: &'parsr mut StringManager<'smgr>) -> Self {
+    pub fn new(tokens: &'parsr [Token], literals: &'parsr mut StringManager<'smgr>) -> Self {
         Parser {
             tokens,
             literals,

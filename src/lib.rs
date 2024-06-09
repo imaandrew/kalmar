@@ -1,4 +1,5 @@
-use error::{DecompilerError, ErrorPrinter};
+pub use error::ErrorPrinter;
+use error::{DecompilerError, KalmarError};
 use indexmap::IndexSet;
 use lexer::Token;
 use parser::Stmt;
@@ -72,11 +73,8 @@ impl<'a> CompilerBuilder<'a> {
     pub fn build(&mut self) -> Compiler<'a> {
         Compiler {
             verbose: self.verbose,
-            tokens: vec![],
             literals: StringManager::new(self.input),
-            stmts: vec![],
             base_addr: self.base_addr,
-            code: vec![],
             syms: parse_syms(self.syms).unwrap(),
         }
     }
@@ -101,7 +99,7 @@ impl std::fmt::Display for SymbolIndex {
     }
 }
 
-struct StringManager<'a> {
+pub struct StringManager<'a> {
     strings: IndexSet<&'a str>,
     text: &'a str,
     lines: Vec<&'a str>,
@@ -131,73 +129,40 @@ impl<'a> StringManager<'a> {
 
 pub struct Compiler<'a> {
     verbose: bool,
-    tokens: Vec<Token>,
     literals: StringManager<'a>,
-    stmts: Vec<Stmt>,
     base_addr: u32,
-    code: Vec<u32>,
     syms: Vec<(&'a str, u32)>,
 }
 
 impl<'a> Compiler<'a> {
-    pub fn lex(mut self) -> Result<Self, KalmarError> {
+    pub fn lex(&mut self) -> Result<Vec<Token>, Vec<KalmarError>> {
         let mut lexer = lexer::Lexer::new(&mut self.literals);
-        match lexer.lex() {
-            Ok(t) => {
-                self.tokens = t;
-            }
-            Err(e) => {
-                let ep = ErrorPrinter::new("REPLACE.scr", &self.literals);
-                for err in e {
-                    ep.print(&err).unwrap();
-                }
-            }
-        }
-        Ok(self)
+        lexer.lex()
     }
 
-    pub fn parse(mut self) -> Result<Self, KalmarError> {
-        let mut parser = parser::Parser::new(&self.tokens, &mut self.literals);
-        match parser.parse(self.verbose) {
-            Ok(s) => self.stmts = s,
-            Err(e) => {
-                let ep = ErrorPrinter::new("REPLACE.scr", &self.literals);
-                ep.print(&e).unwrap();
-            }
-        }
-        Ok(self)
+    pub fn parse(&mut self, tokens: &[Token]) -> Result<Vec<Stmt>, KalmarError> {
+        let mut parser = parser::Parser::new(tokens, &mut self.literals);
+        parser.parse(self.verbose)
     }
 
-    pub fn sem_check(mut self) -> Result<Self, KalmarError> {
+    pub fn sem_check(&mut self, stmts: &[Stmt]) -> Result<(), KalmarError> {
         let mut sem = sem_checker::SemChecker::new(&mut self.literals);
-        match sem.check_ast(&self.stmts) {
-            Ok(_) => Ok(self),
-            Err(e) => {
-                let ep = ErrorPrinter::new("REPLACE.scr", &self.literals);
-                ep.print(&e).unwrap();
-                Ok(self)
-            }
-        }
+        sem.check_ast(stmts)
     }
 
-    pub fn optimize(mut self) -> Self {
-        optimizer::optimize_stmts(&mut self.stmts);
-        self
+    pub fn optimize(&mut self, stmts: &mut [Stmt]) {
+        optimizer::optimize_stmts(stmts);
     }
 
-    pub fn compile(mut self) -> Self {
-        let mut compiler = compiler::Compiler::new(self.base_addr, &mut self.literals);
+    pub fn compile(&mut self, stmts: &[Stmt]) -> Result<Vec<u32>, KalmarError> {
+        let mut compiler: compiler::Compiler =
+            compiler::Compiler::new(self.base_addr, &mut self.literals);
         compiler.add_syms(std::mem::take(&mut self.syms));
-        self.code = compiler.compile(&self.stmts).unwrap();
-        self
+        compiler.compile(stmts)
     }
 
-    pub fn stmts(&mut self) -> &[Stmt] {
-        &self.stmts
-    }
-
-    pub fn code(&mut self) -> &[u32] {
-        &self.code
+    pub fn literals(&self) -> &StringManager<'a> {
+        &self.literals
     }
 }
 
