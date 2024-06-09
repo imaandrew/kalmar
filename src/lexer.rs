@@ -478,7 +478,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
             val: literal,
             span: Span::new(
                 self.line,
-                self.col as usize - self.curr + start + 1,
+                self.col as usize + start + 1 - self.curr,
                 self.curr - start,
             ),
         }
