@@ -5,9 +5,9 @@ use std::{
 
 use crate::{
     compiler::Op,
-    error::KalmarError,
+    error::DecompilerError,
     lexer::{Literal, Number, Token, TokenKind},
-    parser::{BinOp, Expr, Stmt, UnOp},
+    parser::{BinOp, Expr, ExprKind, Stmt, UnOp},
     StringManager,
 };
 
@@ -26,26 +26,26 @@ impl<T> Cur<T>
 where
     T: AsRef<[u8]>,
 {
-    fn read_u32(&mut self) -> Result<u32, KalmarError> {
+    fn read_u32(&mut self) -> Result<u32, DecompilerError> {
         self.pos += 4;
         self.inner
             .as_ref()
             .get(self.pos - 4..self.pos)
             .and_then(|x| x.try_into().ok())
             .map(u32::from_be_bytes)
-            .ok_or(KalmarError::CursorOutOfBounds(
+            .ok_or(DecompilerError::CursorOutOfBounds(
                 self.pos,
                 self.inner.as_ref().len(),
             ))
     }
 
-    fn peek(&mut self) -> Result<u32, KalmarError> {
+    fn peek(&mut self) -> Result<u32, DecompilerError> {
         self.inner
             .as_ref()
             .get(self.pos..self.pos + 4)
             .and_then(|x| x.try_into().ok())
             .map(u32::from_be_bytes)
-            .ok_or(KalmarError::CursorOutOfBounds(
+            .ok_or(DecompilerError::CursorOutOfBounds(
                 self.pos + 4,
                 self.inner.as_ref().len(),
             ))
@@ -65,7 +65,7 @@ impl<'a, 'b> Decompiler<'a, 'b> {
         Self { literals }
     }
 
-    pub fn decompile_script(&mut self, code: &[u8]) -> Result<Stmt, KalmarError> {
+    pub fn decompile_script(&mut self, code: &[u8]) -> Result<Stmt, DecompilerError> {
         let mut c = Cur::new(code);
         let mut block = vec![];
 
@@ -79,7 +79,6 @@ impl<'a, 'b> Decompiler<'a, 'b> {
             Token {
                 kind: TokenKind::Identifier,
                 val: Some(Literal::Identifier(self.literals.add("yoooo"))),
-                pos: 0,
                 col: 0,
                 line: 0,
                 len: 0,
@@ -88,13 +87,13 @@ impl<'a, 'b> Decompiler<'a, 'b> {
         ))
     }
 
-    fn decompile_inst(&mut self, c: &mut Cur<&[u8]>) -> Result<Stmt, KalmarError> {
+    fn decompile_inst(&mut self, c: &mut Cur<&[u8]>) -> Result<Stmt, DecompilerError> {
         let op = Op::from_u32(c.read_u32()?)?;
         let num_args = c.read_u32()?;
 
         if let Some(x) = op.get_arg_count() {
             if num_args != x {
-                return Err(KalmarError::UnexpectOpArgCount(op, num_args, x));
+                return Err(DecompilerError::UnexpectOpArgCount(op, num_args, x));
             };
         }
 
@@ -102,32 +101,22 @@ impl<'a, 'b> Decompiler<'a, 'b> {
             Op::Return => Stmt::Return,
             Op::Label => {
                 let l = Literal::Number(Number::Int(c.read_u32()?));
-                Stmt::Label(Token {
-                    kind: TokenKind::Identifier,
-                    val: Some(l),
-                    pos: 0,
-                    col: 0,
-                    line: 0,
-                    len: 0,
-                })
+                Stmt::Label(new_token(TokenKind::Identifier, Some(l)))
             }
             Op::Goto => {
                 let l = Literal::Number(Number::Int(c.read_u32()?));
-                Stmt::Goto(Token {
-                    kind: TokenKind::Identifier,
-                    val: Some(l),
-                    pos: 0,
-                    col: 0,
-                    line: 0,
-                    len: 0,
-                })
+                Stmt::Goto(new_token(TokenKind::Identifier, Some(l)))
             }
             Op::Loop => {
                 let expr = self.decompile_expr(c)?;
-                let expr = if let Expr::Identifier(Literal::Number(Number::Int(0))) = expr {
+                let expr = if let ExprKind::Identifier(Token {
+                    val: Some(Literal::Number(Number::Int(0))),
+                    ..
+                }) = expr
+                {
                     None
                 } else {
-                    Some(expr)
+                    Some(expr.into())
                 };
                 let mut body = vec![];
                 loop {
@@ -142,66 +131,66 @@ impl<'a, 'b> Decompiler<'a, 'b> {
             }
             Op::BreakLoop => Stmt::BreakLoop,
             Op::IfEq => {
-                let lhs = self.decompile_expr(c)?;
-                let rhs = self.decompile_expr(c)?;
-                let expr = Expr::BinOp(BinOp::Equal, Box::new(lhs), Box::new(rhs));
+                let lhs = self.decompile_expr(c)?.into();
+                let rhs = self.decompile_expr(c)?.into();
+                let expr = ExprKind::BinOp(BinOp::Equal, Box::new(lhs), Box::new(rhs));
 
-                self.decompile_if_stmt(c, expr)?
+                self.decompile_if_stmt(c, expr.into())?
             }
             Op::IfNe => {
-                let lhs = self.decompile_expr(c)?;
-                let rhs = self.decompile_expr(c)?;
-                let expr = Expr::BinOp(BinOp::NotEqual, Box::new(lhs), Box::new(rhs));
+                let lhs = self.decompile_expr(c)?.into();
+                let rhs = self.decompile_expr(c)?.into();
+                let expr = ExprKind::BinOp(BinOp::NotEqual, Box::new(lhs), Box::new(rhs));
 
-                self.decompile_if_stmt(c, expr)?
+                self.decompile_if_stmt(c, expr.into())?
             }
             Op::IfLt => {
-                let lhs = self.decompile_expr(c)?;
-                let rhs = self.decompile_expr(c)?;
-                let expr = Expr::BinOp(BinOp::Less, Box::new(lhs), Box::new(rhs));
+                let lhs = self.decompile_expr(c)?.into();
+                let rhs = self.decompile_expr(c)?.into();
+                let expr = ExprKind::BinOp(BinOp::Less, Box::new(lhs), Box::new(rhs));
 
-                self.decompile_if_stmt(c, expr)?
+                self.decompile_if_stmt(c, expr.into())?
             }
             Op::IfGt => {
-                let lhs = self.decompile_expr(c)?;
-                let rhs = self.decompile_expr(c)?;
-                let expr = Expr::BinOp(BinOp::Greater, Box::new(lhs), Box::new(rhs));
+                let lhs = self.decompile_expr(c)?.into();
+                let rhs = self.decompile_expr(c)?.into();
+                let expr = ExprKind::BinOp(BinOp::Greater, Box::new(lhs), Box::new(rhs));
 
-                self.decompile_if_stmt(c, expr)?
+                self.decompile_if_stmt(c, expr.into())?
             }
             Op::IfLe => {
-                let lhs = self.decompile_expr(c)?;
-                let rhs = self.decompile_expr(c)?;
-                let expr = Expr::BinOp(BinOp::LessEq, Box::new(lhs), Box::new(rhs));
+                let lhs = self.decompile_expr(c)?.into();
+                let rhs = self.decompile_expr(c)?.into();
+                let expr = ExprKind::BinOp(BinOp::LessEq, Box::new(lhs), Box::new(rhs));
 
-                self.decompile_if_stmt(c, expr)?
+                self.decompile_if_stmt(c, expr.into())?
             }
             Op::IfGe => {
-                let lhs = self.decompile_expr(c)?;
-                let rhs = self.decompile_expr(c)?;
-                let expr = Expr::BinOp(BinOp::GreaterEq, Box::new(lhs), Box::new(rhs));
+                let lhs = self.decompile_expr(c)?.into();
+                let rhs = self.decompile_expr(c)?.into();
+                let expr = ExprKind::BinOp(BinOp::GreaterEq, Box::new(lhs), Box::new(rhs));
 
-                self.decompile_if_stmt(c, expr)?
+                self.decompile_if_stmt(c, expr.into())?
             }
             Op::IfFlag => {
-                let lhs = self.decompile_expr(c)?;
-                let rhs = self.decompile_expr(c)?;
-                let expr = Expr::BinOp(BinOp::BitAnd, Box::new(lhs), Box::new(rhs));
+                let lhs = self.decompile_expr(c)?.into();
+                let rhs = self.decompile_expr(c)?.into();
+                let expr = ExprKind::BinOp(BinOp::BitAnd, Box::new(lhs), Box::new(rhs));
 
-                self.decompile_if_stmt(c, expr)?
+                self.decompile_if_stmt(c, expr.into())?
             }
             Op::IfNotFlag => {
-                let lhs = self.decompile_expr(c)?;
-                let rhs = self.decompile_expr(c)?;
-                let expr = Expr::UnOp(
+                let lhs = self.decompile_expr(c)?.into();
+                let rhs = self.decompile_expr(c)?.into();
+                let expr = ExprKind::UnOp(
                     UnOp::Bang,
-                    Box::new(Expr::BinOp(BinOp::BitAnd, Box::new(lhs), Box::new(rhs))),
+                    Box::new(ExprKind::BinOp(BinOp::BitAnd, Box::new(lhs), Box::new(rhs)).into()),
                 );
 
-                self.decompile_if_stmt(c, expr)?
+                self.decompile_if_stmt(c, expr.into())?
             }
             Op::Switch | Op::SwitchConst => {
-                let val = self.decompile_expr(c)?;
+                let val = self.decompile_expr(c)?.into();
                 let mut case = vec![];
 
                 'a: loop {
@@ -209,10 +198,10 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                     let args = c.read_u32()?;
                     let op_arg_count = op.get_arg_count().unwrap();
                     if op_arg_count != args {
-                        return Err(KalmarError::UnexpectOpArgCount(op, op_arg_count, args));
+                        return Err(DecompilerError::UnexpectOpArgCount(op, op_arg_count, args));
                     }
                     let expr = if op == Op::CaseDefault {
-                        Expr::Default
+                        ExprKind::Default
                     } else if op_arg_count == 1 {
                         let op = match op {
                             Op::CaseEq => UnOp::Equal,
@@ -223,7 +212,7 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                             Op::CaseLe => UnOp::LessEq,
                             Op::CaseFlag => UnOp::Ampersand,
                             Op::CaseOrEq => {
-                                let mut val = self.decompile_expr(c)?;
+                                let mut val = self.decompile_expr(c)?.into();
                                 let mut block = vec![];
                                 loop {
                                     let op = Op::from_u32(c.peek()?)?;
@@ -232,14 +221,19 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                                         let args = c.read_u32()?;
                                         let op_arg_count = op.get_arg_count().unwrap();
                                         if op_arg_count != args {
-                                            return Err(KalmarError::UnexpectOpArgCount(
+                                            return Err(DecompilerError::UnexpectOpArgCount(
                                                 op,
                                                 op_arg_count,
                                                 args,
                                             ));
                                         }
-                                        let v = self.decompile_expr(c)?;
-                                        val = Expr::BinOp(BinOp::BitOr, Box::new(val), Box::new(v));
+                                        let v = self.decompile_expr(c)?.into();
+                                        val = ExprKind::BinOp(
+                                            BinOp::BitOr,
+                                            Box::new(val),
+                                            Box::new(v),
+                                        )
+                                        .into();
                                     } else {
                                         while !matches!(
                                             Op::from_u32(c.peek()?)?,
@@ -267,7 +261,7 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                                 continue;
                             }
                             Op::CaseAndEq => {
-                                let mut val = self.decompile_expr(c)?;
+                                let mut val = self.decompile_expr(c)?.into();
                                 let mut block = vec![];
                                 loop {
                                     let op = Op::from_u32(c.peek()?)?;
@@ -276,15 +270,19 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                                         let args = c.read_u32()?;
                                         let op_arg_count = op.get_arg_count().unwrap();
                                         if op_arg_count != args {
-                                            return Err(KalmarError::UnexpectOpArgCount(
+                                            return Err(DecompilerError::UnexpectOpArgCount(
                                                 op,
                                                 op_arg_count,
                                                 args,
                                             ));
                                         }
-                                        let v = self.decompile_expr(c)?;
-                                        val =
-                                            Expr::BinOp(BinOp::BitAnd, Box::new(val), Box::new(v));
+                                        let v = self.decompile_expr(c)?.into();
+                                        val = ExprKind::BinOp(
+                                            BinOp::BitAnd,
+                                            Box::new(val),
+                                            Box::new(v),
+                                        )
+                                        .into();
                                     } else {
                                         while !matches!(
                                             Op::from_u32(c.peek()?)?,
@@ -313,12 +311,12 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                             }
                             e => panic!("{:?}", e),
                         };
-                        let val = self.decompile_expr(c)?;
-                        Expr::UnOp(op, Box::new(val))
+                        let val = self.decompile_expr(c)?.into();
+                        ExprKind::UnOp(op, Box::new(val))
                     } else if op == Op::CaseRange {
-                        let val1 = self.decompile_expr(c)?;
-                        let val2 = self.decompile_expr(c)?;
-                        Expr::BinOp(BinOp::Range, Box::new(val1), Box::new(val2))
+                        let val1 = self.decompile_expr(c)?.into();
+                        let val2 = self.decompile_expr(c)?.into();
+                        ExprKind::BinOp(BinOp::Range, Box::new(val1), Box::new(val2))
                     } else if op == Op::EndSwitch {
                         break 'a;
                     } else {
@@ -344,226 +342,391 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                         block.push(self.decompile_inst(c)?);
                     }
 
-                    case.push(Stmt::Case(expr, Box::new(Stmt::Block(block))));
+                    case.push(Stmt::Case(expr.into(), Box::new(Stmt::Block(block))));
                 }
 
                 Stmt::Switch(val, Box::new(Stmt::Block(case)))
             }
             Op::BreakSwitch => Stmt::BreakCase,
-            Op::Set | Op::SetF => Stmt::Expr(Expr::BinOp(
-                BinOp::Assign,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::SetConst => Stmt::Expr(Expr::BinOp(
-                BinOp::Assign,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::UnOp(
-                    UnOp::Ampersand,
-                    Box::new(self.decompile_expr(c)?),
-                )),
-            )),
-            Op::Add | Op::AddF => Stmt::Expr(Expr::BinOp(
-                BinOp::PlusEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::Sub | Op::SubF => Stmt::Expr(Expr::BinOp(
-                BinOp::MinusEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::Mul | Op::MulF => Stmt::Expr(Expr::BinOp(
-                BinOp::StarEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::Div | Op::DivF => Stmt::Expr(Expr::BinOp(
-                BinOp::DivEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::Mod => Stmt::Expr(Expr::BinOp(
-                BinOp::ModEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::UseBuf => Stmt::Expr(Expr::ArrayAssign(
-                Literal::Identifier(self.literals.add("Buffer")),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::BufRead1 => Stmt::Expr(Expr::BinOp(
-                BinOp::Arrow,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::Identifier(Literal::Identifier(
-                    self.literals.add("Buffer"),
-                ))),
-            )),
-            Op::BufRead2 => Stmt::Expr(Expr::BinOp(
-                BinOp::Comma,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::BinOp(
+            Op::Set | Op::SetF => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::Assign,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::SetConst => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::Assign,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::UnOp(UnOp::Ampersand, Box::new(self.decompile_expr(c)?.into()))
+                            .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::Add | Op::AddF => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::PlusEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::Sub | Op::SubF => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::MinusEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::Mul | Op::MulF => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::StarEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::Div | Op::DivF => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::DivEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::Mod => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::ModEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::UseBuf => Stmt::Expr(
+                ExprKind::ArrayAssign(
+                    new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Identifier(self.literals.add("Buffer"))),
+                    ),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::BufRead1 => Stmt::Expr(
+                ExprKind::BinOp(
                     BinOp::Arrow,
-                    Box::new(self.decompile_expr(c)?),
-                    Box::new(Expr::Identifier(Literal::Identifier(
-                        self.literals.add("Buffer"),
-                    ))),
-                )),
-            )),
-            Op::BufRead3 => Stmt::Expr(Expr::BinOp(
-                BinOp::Comma,
-                Box::new(Expr::BinOp(
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::Identifier(new_token(
+                            TokenKind::Identifier,
+                            Some(Literal::Identifier(self.literals.add("Buffer"))),
+                        ))
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::BufRead2 => Stmt::Expr(
+                ExprKind::BinOp(
                     BinOp::Comma,
-                    Box::new(self.decompile_expr(c)?),
-                    Box::new(self.decompile_expr(c)?),
-                )),
-                Box::new(Expr::BinOp(
-                    BinOp::Arrow,
-                    Box::new(self.decompile_expr(c)?),
-                    Box::new(Expr::Identifier(Literal::Identifier(
-                        self.literals.add("Buffer"),
-                    ))),
-                )),
-            )),
-            Op::BufRead4 => Stmt::Expr(Expr::BinOp(
-                BinOp::Comma,
-                Box::new(Expr::BinOp(
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Arrow,
+                            Box::new(self.decompile_expr(c)?.into()),
+                            Box::new(
+                                ExprKind::Identifier(new_token(
+                                    TokenKind::Identifier,
+                                    Some(Literal::Identifier(self.literals.add("Buffer"))),
+                                ))
+                                .into(),
+                            ),
+                        )
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::BufRead3 => Stmt::Expr(
+                ExprKind::BinOp(
                     BinOp::Comma,
-                    Box::new(Expr::BinOp(
-                        BinOp::Comma,
-                        Box::new(self.decompile_expr(c)?),
-                        Box::new(self.decompile_expr(c)?),
-                    )),
-                    Box::new(self.decompile_expr(c)?),
-                )),
-                Box::new(Expr::BinOp(
-                    BinOp::Arrow,
-                    Box::new(self.decompile_expr(c)?),
-                    Box::new(Expr::Identifier(Literal::Identifier(
-                        self.literals.add("Buffer"),
-                    ))),
-                )),
-            )),
-            Op::BufPeek => Stmt::Expr(Expr::BinOp(
-                BinOp::Assign,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::Identifier(Literal::Identifier(
-                    self.literals.add("Buffer"),
-                ))),
-            )),
-            Op::UseFBuf => Stmt::Expr(Expr::ArrayAssign(
-                Literal::Identifier(self.literals.add("FBuffer")),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::FBufRead1 => Stmt::Expr(Expr::BinOp(
-                BinOp::Arrow,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::Identifier(Literal::Identifier(
-                    self.literals.add("FBuffer"),
-                ))),
-            )),
-            Op::FBufRead2 => Stmt::Expr(Expr::BinOp(
-                BinOp::Comma,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::BinOp(
-                    BinOp::Arrow,
-                    Box::new(self.decompile_expr(c)?),
-                    Box::new(Expr::Identifier(Literal::Identifier(
-                        self.literals.add("FBuffer"),
-                    ))),
-                )),
-            )),
-            Op::FBufRead3 => Stmt::Expr(Expr::BinOp(
-                BinOp::Comma,
-                Box::new(Expr::BinOp(
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Comma,
+                            Box::new(self.decompile_expr(c)?.into()),
+                            Box::new(self.decompile_expr(c)?.into()),
+                        )
+                        .into(),
+                    ),
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Arrow,
+                            Box::new(self.decompile_expr(c)?.into()),
+                            Box::new(
+                                ExprKind::Identifier(new_token(
+                                    TokenKind::Identifier,
+                                    Some(Literal::Identifier(self.literals.add("Buffer"))),
+                                ))
+                                .into(),
+                            ),
+                        )
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::BufRead4 => Stmt::Expr(
+                ExprKind::BinOp(
                     BinOp::Comma,
-                    Box::new(self.decompile_expr(c)?),
-                    Box::new(self.decompile_expr(c)?),
-                )),
-                Box::new(Expr::BinOp(
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Comma,
+                            Box::new(
+                                ExprKind::BinOp(
+                                    BinOp::Comma,
+                                    Box::new(self.decompile_expr(c)?.into()),
+                                    Box::new(self.decompile_expr(c)?.into()),
+                                )
+                                .into(),
+                            ),
+                            Box::new(self.decompile_expr(c)?.into()),
+                        )
+                        .into(),
+                    ),
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Arrow,
+                            Box::new(self.decompile_expr(c)?.into()),
+                            Box::new(
+                                ExprKind::Identifier(new_token(
+                                    TokenKind::Identifier,
+                                    Some(Literal::Identifier(self.literals.add("Buffer"))),
+                                ))
+                                .into(),
+                            ),
+                        )
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::BufPeek => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::Assign,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::Identifier(new_token(
+                            TokenKind::Identifier,
+                            Some(Literal::Identifier(self.literals.add("Buffer"))),
+                        ))
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::UseFBuf => Stmt::Expr(
+                ExprKind::ArrayAssign(
+                    new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Identifier(self.literals.add("FBuffer"))),
+                    ),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::FBufRead1 => Stmt::Expr(
+                ExprKind::BinOp(
                     BinOp::Arrow,
-                    Box::new(self.decompile_expr(c)?),
-                    Box::new(Expr::Identifier(Literal::Identifier(
-                        self.literals.add("FBuffer"),
-                    ))),
-                )),
-            )),
-            Op::FBufRead4 => Stmt::Expr(Expr::BinOp(
-                BinOp::Comma,
-                Box::new(Expr::BinOp(
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::Identifier(new_token(
+                            TokenKind::Identifier,
+                            Some(Literal::Identifier(self.literals.add("FBuffer"))),
+                        ))
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::FBufRead2 => Stmt::Expr(
+                ExprKind::BinOp(
                     BinOp::Comma,
-                    Box::new(Expr::BinOp(
-                        BinOp::Comma,
-                        Box::new(self.decompile_expr(c)?),
-                        Box::new(self.decompile_expr(c)?),
-                    )),
-                    Box::new(self.decompile_expr(c)?),
-                )),
-                Box::new(Expr::BinOp(
-                    BinOp::Arrow,
-                    Box::new(self.decompile_expr(c)?),
-                    Box::new(Expr::Identifier(Literal::Identifier(
-                        self.literals.add("FBuffer"),
-                    ))),
-                )),
-            )),
-            Op::FBufPeek => Stmt::Expr(Expr::BinOp(
-                BinOp::Assign,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::Identifier(Literal::Identifier(
-                    self.literals.add("FBuffer"),
-                ))),
-            )),
-            Op::UseArray => Stmt::Expr(Expr::ArrayAssign(
-                Literal::Identifier(self.literals.add("Array")),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::UseFlags => Stmt::Expr(Expr::ArrayAssign(
-                Literal::Identifier(self.literals.add("Flags")),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::BitwiseAnd => Stmt::Expr(Expr::BinOp(
-                BinOp::AndEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::BitwiseAndConst => Stmt::Expr(Expr::BinOp(
-                BinOp::AndEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::UnOp(
-                    UnOp::Ampersand,
-                    Box::new(self.decompile_expr(c)?),
-                )),
-            )),
-            Op::BitwiseOr => Stmt::Expr(Expr::BinOp(
-                BinOp::OrEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(self.decompile_expr(c)?),
-            )),
-            Op::BitwiseOrConst => Stmt::Expr(Expr::BinOp(
-                BinOp::OrEq,
-                Box::new(self.decompile_expr(c)?),
-                Box::new(Expr::UnOp(
-                    UnOp::Ampersand,
-                    Box::new(self.decompile_expr(c)?),
-                )),
-            )),
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Arrow,
+                            Box::new(self.decompile_expr(c)?.into()),
+                            Box::new(
+                                ExprKind::Identifier(new_token(
+                                    TokenKind::Identifier,
+                                    Some(Literal::Identifier(self.literals.add("FBuffer"))),
+                                ))
+                                .into(),
+                            ),
+                        )
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::FBufRead3 => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::Comma,
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Comma,
+                            Box::new(self.decompile_expr(c)?.into()),
+                            Box::new(self.decompile_expr(c)?.into()),
+                        )
+                        .into(),
+                    ),
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Arrow,
+                            Box::new(self.decompile_expr(c)?.into()),
+                            Box::new(
+                                ExprKind::Identifier(new_token(
+                                    TokenKind::Identifier,
+                                    Some(Literal::Identifier(self.literals.add("FBuffer"))),
+                                ))
+                                .into(),
+                            ),
+                        )
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::FBufRead4 => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::Comma,
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Comma,
+                            Box::new(
+                                ExprKind::BinOp(
+                                    BinOp::Comma,
+                                    Box::new(self.decompile_expr(c)?.into()),
+                                    Box::new(self.decompile_expr(c)?.into()),
+                                )
+                                .into(),
+                            ),
+                            Box::new(self.decompile_expr(c)?.into()),
+                        )
+                        .into(),
+                    ),
+                    Box::new(
+                        ExprKind::BinOp(
+                            BinOp::Arrow,
+                            Box::new(self.decompile_expr(c)?.into()),
+                            Box::new(
+                                ExprKind::Identifier(new_token(
+                                    TokenKind::Identifier,
+                                    Some(Literal::Identifier(self.literals.add("FBuffer"))),
+                                ))
+                                .into(),
+                            ),
+                        )
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::FBufPeek => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::Assign,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::Identifier(new_token(
+                            TokenKind::Identifier,
+                            Some(Literal::Identifier(self.literals.add("FBuffer"))),
+                        ))
+                        .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::UseArray => Stmt::Expr(
+                ExprKind::ArrayAssign(
+                    new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Identifier(self.literals.add("Array"))),
+                    ),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::UseFlags => Stmt::Expr(
+                ExprKind::ArrayAssign(
+                    new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Identifier(self.literals.add("Flags"))),
+                    ),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::BitwiseAnd => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::AndEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::BitwiseAndConst => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::AndEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::UnOp(UnOp::Ampersand, Box::new(self.decompile_expr(c)?.into()))
+                            .into(),
+                    ),
+                )
+                .into(),
+            ),
+            Op::BitwiseOr => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::OrEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(self.decompile_expr(c)?.into()),
+                )
+                .into(),
+            ),
+            Op::BitwiseOrConst => Stmt::Expr(
+                ExprKind::BinOp(
+                    BinOp::OrEq,
+                    Box::new(self.decompile_expr(c)?.into()),
+                    Box::new(
+                        ExprKind::UnOp(UnOp::Ampersand, Box::new(self.decompile_expr(c)?.into()))
+                            .into(),
+                    ),
+                )
+                .into(),
+            ),
             Op::Call => {
                 let addr = c.read_u32()?;
                 let mut args = vec![];
                 for _ in 0..num_args {
-                    args.push(self.decompile_expr(c)?);
+                    args.push(self.decompile_expr(c)?.into());
                 }
-                Stmt::Expr(Expr::FuncCall(Literal::Number(Number::Int(addr)), args))
+                Stmt::Expr(
+                    ExprKind::FuncCall(
+                        new_token(TokenKind::Number, Some(Literal::Number(Number::Int(addr)))),
+                        args,
+                    )
+                    .into(),
+                )
             }
-            Op::Jump => Stmt::Jump(Token {
-                kind: TokenKind::Number,
-                val: Some(Literal::Number(Number::Int(c.read_u32()?))),
-                pos: 0,
-                col: 0,
-                line: 0,
-                len: 0,
-            }),
+            Op::Jump => Stmt::Jump(new_token(
+                TokenKind::Number,
+                Some(Literal::Number(Number::Int(c.read_u32()?))),
+            )),
             Op::Thread => {
                 let mut block = vec![];
                 while Op::from_u32(c.peek()?)? != Op::EndThread {
@@ -622,19 +785,29 @@ impl<'a, 'b> Decompiler<'a, 'b> {
                 };
                 let mut args = vec![];
                 for _ in 0..num_args {
-                    args.push(self.decompile_expr(c)?);
+                    args.push(self.decompile_expr(c)?.into());
                 }
-                Stmt::Expr(Expr::FuncCall(
-                    Literal::Identifier(self.literals.add(func)),
-                    args,
-                ))
+                Stmt::Expr(
+                    ExprKind::FuncCall(
+                        new_token(
+                            TokenKind::Identifier,
+                            Some(Literal::Identifier(self.literals.add(func))),
+                        ),
+                        args,
+                    )
+                    .into(),
+                )
             }
-            Op::End => return Err(KalmarError::UnexpectedEndToken),
+            Op::End => return Err(DecompilerError::UnexpectedEndToken),
             e => panic!("{:?}", e),
         })
     }
 
-    fn decompile_if_stmt(&mut self, c: &mut Cur<&[u8]>, expr: Expr) -> Result<Stmt, KalmarError> {
+    fn decompile_if_stmt(
+        &mut self,
+        c: &mut Cur<&[u8]>,
+        expr: Expr,
+    ) -> Result<Stmt, DecompilerError> {
         let mut if_block = vec![];
         let mut else_stmt = None;
 
@@ -691,85 +864,171 @@ impl<'a, 'b> Decompiler<'a, 'b> {
         Ok(Stmt::IfElse(Box::new(if_stmt), else_stmt))
     }
 
-    fn decompile_expr(&mut self, c: &mut Cur<&[u8]>) -> Result<Expr, KalmarError> {
+    fn decompile_expr(&mut self, c: &mut Cur<&[u8]>) -> Result<ExprKind, DecompilerError> {
         let var = c.read_u32()? as i32;
         Ok(if var <= -220000000 {
-            Expr::Identifier(Literal::Number(Number::Float(
-                (var + 230000000) as f32 / 1024.0,
-            )))
+            ExprKind::Identifier(new_token(
+                TokenKind::Number,
+                Some(Literal::Number(Number::Float(
+                    (var + 230000000) as f32 / 1024.0,
+                ))),
+            ))
         } else if var <= -200000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("FlagArray")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    var as u32 + 210000000,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("FlagArray"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 210000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -180000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("Array")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    var as u32 + 190000000,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("Array"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 190000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -160000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("GlobalBytes")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    var as u32 + 170000000,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("GlobalBytes"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 170000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -140000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("AreaBytes")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    var as u32 + 150000000,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("AreaBytes"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 150000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -120000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("GameFlag")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    var as u32 + 130000000,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("GameFlag"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 130000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -100000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("AreaFlag")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    var as u32 + 110000000,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("AreaFlag"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 110000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -80000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("MapFlag")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    var as u32 + 90000000,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("MapFlag"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 90000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -60000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("LocalFlag")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    var as u32 + 70000000,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("LocalFlag"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 70000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -40000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("MapVar")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    (var + 50000000) as u32,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("MapVar"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 50000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else if var <= -20000000 {
-            Expr::Array(
-                Literal::Identifier(self.literals.add("Var")),
-                Box::new(Expr::Identifier(Literal::Number(Number::Int(
-                    (var + 30000000) as u32,
-                )))),
+            ExprKind::Array(
+                new_token(
+                    TokenKind::Identifier,
+                    Some(Literal::Identifier(self.literals.add("Var"))),
+                ),
+                Box::new(
+                    ExprKind::Identifier(new_token(
+                        TokenKind::Identifier,
+                        Some(Literal::Number(Number::Int(var as u32 + 30000000))),
+                    ))
+                    .into(),
+                ),
             )
         } else {
-            Expr::Identifier(Literal::Number(Number::Int(var as u32)))
+            ExprKind::Identifier(new_token(
+                TokenKind::Number,
+                Some(Literal::Number(Number::Int(var as u32))),
+            ))
         })
+    }
+}
+
+fn new_token(kind: TokenKind, val: Option<Literal>) -> Token {
+    Token {
+        kind,
+        val,
+        col: 0,
+        line: 0,
+        len: 0,
     }
 }
 

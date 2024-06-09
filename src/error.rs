@@ -1,7 +1,7 @@
 use std::io::Write;
 use thiserror::Error;
 
-//use crate::compiler::Op;
+use crate::compiler::Op;
 use crate::lexer::{Literal, Token, TokenKind};
 use crate::parser::Span;
 use crate::sem_checker::Type;
@@ -68,11 +68,11 @@ impl<'a> ContextPrinter<'a> {
 */
 
 #[derive(Error, Debug)]
-pub enum KalmarError {
+pub enum DecompilerError {
     #[error("undeclared reference to `{0:?}`")]
     UndeclaredReference(Vec<String>),
     #[error("opcode {0} is stating {1} args instead of expected {2}")]
-    UnexpectOpArgCount(u32, u32, u32),
+    UnexpectOpArgCount(Op, u32, u32),
     #[error("idk come up with something")]
     CursorOutOfBounds(usize, usize),
     #[error("unexpected end token")]

@@ -1,10 +1,10 @@
-use error::{ErrorPrinter, KalmarError};
+use error::{DecompilerError, ErrorPrinter};
 use indexmap::IndexSet;
 use lexer::Token;
 use parser::Stmt;
 
 mod compiler;
-//mod decompiler;
+mod decompiler;
 mod error;
 mod lexer;
 mod optimizer;
@@ -259,9 +259,9 @@ pub struct Decompiler<'a> {
     base_addr: u32,
     syms: Vec<(&'a str, u32)>,
 }
-/*
+
 impl<'a> Decompiler<'a> {
-    pub fn parse(mut self) -> Result<Self, KalmarError> {
+    pub fn parse(mut self) -> Result<Self, DecompilerError> {
         let mut de = decompiler::Decompiler::new(&mut self.literals);
         match de.decompile_script(self.input) {
             Ok(s) => self.stmts.push(s),
@@ -274,4 +274,3 @@ impl<'a> Decompiler<'a> {
         &self.stmts
     }
 }
-*/
