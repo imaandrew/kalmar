@@ -1,7 +1,7 @@
 use strum_macros::Display;
 
 use crate::{
-    error::NewKalmarError,
+    error::KalmarError,
     lexer::{Literal, Token},
     parser::{BinOp, Expr, ExprKind, Stmt, UnOp},
     StringManager,
@@ -26,7 +26,7 @@ macro_rules! assert_types {
         match $lhs {
             $pattern => Ok(()),
             t => {
-                Err(NewKalmarError::InvalidType($span, $x, t))
+                Err(KalmarError::InvalidType($span, $x, t))
             }
         }
     }};
@@ -34,7 +34,7 @@ macro_rules! assert_types {
         match $lhs {
             $pattern => Ok(()),
             t => {
-                Err(NewKalmarError::InvalidTypes($span, vec![$($x),+], t))
+                Err(KalmarError::InvalidTypes($span, vec![$($x),+], t))
             }
         }
     }};
@@ -61,20 +61,20 @@ impl<'a> SemChecker<'a> {
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn check_ast(&mut self, ast: &'a Vec<Stmt>) -> Result<(), NewKalmarError> {
+    pub fn check_ast(&mut self, ast: &'a Vec<Stmt>) -> Result<(), KalmarError> {
         self.check_nodes(ast)?;
         self.verify_referenced_identifiers(&self.declared_scripts, &self.referenced_scripts)?;
         Ok(())
     }
 
-    fn check_nodes(&mut self, stmts: &'a Vec<Stmt>) -> Result<(), NewKalmarError> {
+    fn check_nodes(&mut self, stmts: &'a Vec<Stmt>) -> Result<(), KalmarError> {
         for stmt in stmts {
             self.check_stmt_node(stmt)?;
         }
         Ok(())
     }
 
-    fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), NewKalmarError> {
+    fn check_stmt_node(&mut self, stmt: &'a Stmt) -> Result<(), KalmarError> {
         match stmt {
             Stmt::Script(
                 t @ Token {
@@ -90,7 +90,7 @@ impl<'a> SemChecker<'a> {
                         self.literals.get(*i).unwrap(),
                         &self.declared_scripts,
                     )
-                    .ok_or(NewKalmarError::RedeclaredScript(*t))?;
+                    .ok_or(KalmarError::RedeclaredScript(*t))?;
                 self.declared_scripts.push(script);
                 self.check_stmt_node(s)?;
                 self.verify_referenced_identifiers(&self.declared_labels, &self.referenced_labels)?;
@@ -103,14 +103,14 @@ impl<'a> SemChecker<'a> {
                 },
             ) => {
                 if self.declared_labels.len() >= 16 {
-                    return Err(NewKalmarError::TooManyLabels(*t));
+                    return Err(KalmarError::TooManyLabels(*t));
                 }
                 self.declared_labels.push(
                     self.check_identifier_uniqueness(
                         self.literals.get(*i).unwrap(),
                         &self.declared_labels,
                     )
-                    .ok_or(NewKalmarError::RedeclaredLabel(*t))?,
+                    .ok_or(KalmarError::RedeclaredLabel(*t))?,
                 );
             }
             Stmt::Goto(Token {
@@ -197,7 +197,7 @@ impl<'a> SemChecker<'a> {
         Ok(())
     }
 
-    fn check_expr_node(&self, expr: &Expr) -> Result<Type, NewKalmarError> {
+    fn check_expr_node(&self, expr: &Expr) -> Result<Type, KalmarError> {
         Ok(match &expr.kind {
             ExprKind::Identifier(l) => match l.val.unwrap() {
                 Literal::Identifier(_) => Type::Identifier,
@@ -241,7 +241,7 @@ impl<'a> SemChecker<'a> {
         })
     }
 
-    fn check_unop_type(&self, op: &UnOp, expr: &Expr) -> Result<Type, NewKalmarError> {
+    fn check_unop_type(&self, op: &UnOp, expr: &Expr) -> Result<Type, KalmarError> {
         let t = self.check_expr_node(expr)?;
         Ok(match op {
             UnOp::Minus => {
@@ -287,13 +287,13 @@ impl<'a> SemChecker<'a> {
         })
     }
 
-    fn check_binop_type(&self, op: &BinOp, lhs: &Expr, rhs: &Expr) -> Result<Type, NewKalmarError> {
+    fn check_binop_type(&self, op: &BinOp, lhs: &Expr, rhs: &Expr) -> Result<Type, KalmarError> {
         let l_type = self.check_expr_node(lhs)?;
         let r_type = self.check_expr_node(rhs)?;
         Ok(match op {
             BinOp::Plus | BinOp::Minus | BinOp::Star | BinOp::Div => {
                 if l_type != r_type {
-                    return Err(NewKalmarError::UnequalTypes(
+                    return Err(KalmarError::UnequalTypes(
                         lhs.span, l_type, rhs.span, r_type,
                     ));
                 }
@@ -372,7 +372,7 @@ impl<'a> SemChecker<'a> {
                     Type::Var
                 )?;
                 if l_type != Type::Var && r_type != Type::Var && l_type != r_type {
-                    return Err(NewKalmarError::UnequalTypes(
+                    return Err(KalmarError::UnequalTypes(
                         lhs.span, l_type, rhs.span, r_type,
                     ));
                 }
@@ -432,7 +432,7 @@ impl<'a> SemChecker<'a> {
         &self,
         declared: &[&'a str],
         referenced: &Vec<&'a str>,
-    ) -> Result<(), NewKalmarError> {
+    ) -> Result<(), KalmarError> {
         let mut undeclared_references = vec![];
         for ident in referenced {
             if !declared.contains(ident) {

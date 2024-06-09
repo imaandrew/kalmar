@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use num_enum::TryFromPrimitive;
 use strum_macros::Display;
 
-use crate::error::NewKalmarError;
+use crate::error::{DecompilerError, KalmarError};
 use crate::lexer::{Literal, Token};
 use crate::parser::{BinOp, Expr, ExprKind, Stmt, UnOp};
 use crate::StringManager;
@@ -207,8 +207,8 @@ impl Op {
         })
     }
 
-    pub fn from_u32(op: u32) -> Self {
-        Op::try_from(op).unwrap()
+    pub fn from_u32(op: u32) -> Result<Self, DecompilerError> {
+        Op::try_from(op).map_err(|_| DecompilerError::InvalidOpcode(op))
     }
 }
 
@@ -237,7 +237,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         self.syms.extend(syms)
     }
 
-    pub fn compile(&mut self, stmts: &'cmplr Vec<Stmt>) -> Result<Vec<u32>, NewKalmarError> {
+    pub fn compile(&mut self, stmts: &'cmplr Vec<Stmt>) -> Result<Vec<u32>, KalmarError> {
         for s in stmts {
             self.compile_stmt(s)?;
         }
@@ -247,7 +247,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 Literal::Identifier(s) => self
                     .syms
                     .get(self.literals.get(s).unwrap())
-                    .ok_or(NewKalmarError::UndefinedSymbol(**t))?,
+                    .ok_or(KalmarError::UndefinedSymbol(**t))?,
                 _ => unreachable!(),
             };
             self.code[*a as usize] = *s;
@@ -256,7 +256,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         Ok(std::mem::take(&mut self.code))
     }
 
-    fn compile_stmt(&mut self, stmt: &'cmplr Stmt) -> Result<(), NewKalmarError> {
+    fn compile_stmt(&mut self, stmt: &'cmplr Stmt) -> Result<(), KalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -336,7 +336,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     ExprKind::UnOp(UnOp::Bang, e) => {
                         let start = self.code.len();
                         self.compile_expr(e)?;
-                        self.code[start] = match Op::from_u32(self.code[start]) {
+                        self.code[start] = match Op::from_u32(self.code[start]).unwrap() {
                             Op::IfEq => Op::IfNe,
                             Op::IfNe => Op::IfEq,
                             Op::IfLt => Op::IfGe,
@@ -441,7 +441,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         Ok(())
     }
 
-    fn compile_expr(&mut self, expr: &'cmplr Expr) -> Result<(), NewKalmarError> {
+    fn compile_expr(&mut self, expr: &'cmplr Expr) -> Result<(), KalmarError> {
         macro_rules! add_op {
             ($op:ident) => {{
                 self.code.push(Op::$op as u32);
@@ -716,10 +716,9 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
             }
             ExprKind::FuncCall(func, args) => {
                 let addr = match func.val.unwrap() {
-                    Literal::Identifier(i) => {
-                        self.get_func(self.literals.get(i).unwrap(), false)
-                            .ok_or(NewKalmarError::UndefinedFunction(*func))?
-                    }
+                    Literal::Identifier(i) => self
+                        .get_func(self.literals.get(i).unwrap(), false)
+                        .ok_or(KalmarError::UndefinedFunction(*func))?,
                     _ => unreachable!(),
                 };
                 if addr.1 == -1 {

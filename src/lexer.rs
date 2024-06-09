@@ -3,7 +3,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::{error::NewKalmarError, StringManager, SymbolIndex};
+use crate::{error::KalmarError, StringManager, SymbolIndex};
 
 use std::string::ToString;
 use strum_macros::Display;
@@ -225,7 +225,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         }
     }
 
-    pub fn lex(&mut self) -> Result<Vec<Token>, Vec<NewKalmarError>> {
+    pub fn lex(&mut self) -> Result<Vec<Token>, Vec<KalmarError>> {
         let mut tokens = vec![];
         let mut err = vec![];
         while !self.at_end() {
@@ -244,7 +244,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         }
     }
 
-    fn lex_token(&mut self) -> Result<Token, NewKalmarError> {
+    fn lex_token(&mut self) -> Result<Token, KalmarError> {
         let c = self.next();
         match c {
             '(' => Ok(self.create_token(TokenKind::LParen)),
@@ -298,12 +298,12 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                     self.curr - 1,
                     Some(Literal::Identifier(idx)),
                 );
-                Err(NewKalmarError::UnexpectedChar(t))
+                Err(KalmarError::UnexpectedChar(t))
             }
         }
     }
 
-    fn number(&mut self, c: char) -> Result<Token, NewKalmarError> {
+    fn number(&mut self, c: char) -> Result<Token, KalmarError> {
         let mut base = 10;
         let mut start = self.curr - 1;
         if c == '0' {
@@ -323,7 +323,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                             line: self.line,
                             col: self.col as usize - 1,
                         };
-                        return Err(NewKalmarError::BaseMissingNumber(t));
+                        return Err(KalmarError::BaseMissingNumber(t));
                     }
                 }
                 'o' => {
@@ -341,7 +341,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                             line: self.line,
                             col: self.col as usize - 1,
                         };
-                        return Err(NewKalmarError::BaseMissingNumber(t));
+                        return Err(KalmarError::BaseMissingNumber(t));
                     }
                 }
                 'x' => {
@@ -359,7 +359,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                             line: self.line,
                             col: self.col as usize - 1,
                         };
-                        return Err(NewKalmarError::BaseMissingNumber(t));
+                        return Err(KalmarError::BaseMissingNumber(t));
                     }
                 }
                 '0'..='9' => {
@@ -417,7 +417,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
         non_empty
     }
 
-    fn identifier(&mut self) -> Result<Token, NewKalmarError> {
+    fn identifier(&mut self) -> Result<Token, KalmarError> {
         let start = self.curr - 1;
 
         while self.peek().is_alphabetic() || self.peek() == '_' {
