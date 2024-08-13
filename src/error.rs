@@ -8,63 +8,6 @@ use crate::StringManager;
 use std::io::IsTerminal;
 
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
-/*
-pub struct ContextPrinter<'a> {
-    ctxt: Vec<&'a str>,
-}
-
-impl<'a> ContextPrinter<'a> {
-    pub fn new(ctxt: &'a str) -> Self {
-        Self {
-            ctxt: ctxt.lines().collect(),
-        }
-    }
-
-    pub fn print(&self, err: &Error) -> Result<(), std::io::Error> {
-        let margin = err.pos.0.to_string().len();
-        let line_start = err.pos.1;
-        let line_len = err.underline_len;
-        let mut stderr = StandardStream::stderr(if std::io::stdin().is_terminal() {
-            ColorChoice::Always
-        } else {
-            ColorChoice::Never
-        });
-        let mut c = ColorSpec::new();
-
-        macro_rules! writeln_colour {
-            ($colour:ident, $($arg:tt)*) => {{
-                stderr.set_color(c.set_fg(Some(Color::$colour)))?;
-                writeln!(&mut stderr, $($arg)*)?;
-            }};
-            ($($arg:tt)*) => {{
-                stderr.set_color(c.set_fg(None))?;
-                writeln!(&mut stderr, $($arg)*)?;
-            }};
-        }
-
-        macro_rules! write_colour {
-            ($colour:ident, $($arg:tt)*) => {{
-                stderr.set_color(c.set_fg(Some(Color::$colour)))?;
-                write!(&mut stderr, $($arg)*)?;
-            }};
-        }
-
-        write_colour!(Red, "error");
-        writeln_colour!(": {}", err);
-
-        writeln_colour!(Blue, "{:>margin$} |", "");
-
-        write!(&mut stderr, "{:<margin$} | ", err.pos.0,)?;
-        writeln_colour!("{}", self.ctxt.get(err.pos.0 - 1).unwrap());
-
-        write_colour!(Blue, "{:>margin$} |", "");
-        writeln_colour!(Red, "{:>line_start$}{:^>line_len$}", "", "");
-
-        writeln_colour!(Blue, "{:>margin$} |", "");
-        Ok(())
-    }
-}
-*/
 
 #[derive(Error, Debug)]
 pub enum DecompilerError {
