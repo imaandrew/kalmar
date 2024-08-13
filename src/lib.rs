@@ -80,7 +80,7 @@ impl<'a> CompilerBuilder<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SymbolIndex(u32);
 
 impl SymbolIndex {
@@ -145,7 +145,7 @@ impl<'a> Compiler<'a> {
         parser.parse(self.verbose)
     }
 
-    pub fn sem_check(&mut self, stmts: &[Stmt]) -> Result<(), KalmarError> {
+    pub fn sem_check(&mut self, stmts: &[Stmt]) -> Result<(), Vec<KalmarError>> {
         let mut sem = sem_checker::SemChecker::new(&mut self.literals);
         sem.check_ast(stmts)
     }

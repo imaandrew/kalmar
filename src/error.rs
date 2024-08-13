@@ -96,7 +96,7 @@ pub enum KalmarError {
     InvalidTypes(Span, Vec<Type>, Type),
     UnequalTypes(Span, Type, Span, Type),
     UndefinedFunction(Token),
-    UndefinedSymbol(Token),
+    UndeclaredIdentifier(Token),
 }
 
 pub struct ErrorPrinter<'err, 'smgr> {
@@ -215,13 +215,13 @@ impl<'err, 'smgr> ErrorPrinter<'err, 'smgr> {
                 let msg = format!("reference to undefined function `{}`", func);
                 (msg, line, f.span.line, f.span.col, f.span.len)
             }
-            KalmarError::UndefinedSymbol(s) => {
+            KalmarError::UndeclaredIdentifier(s) => {
                 let line = self.literals.err_context(s.span.line);
                 let sym = match s.val.unwrap() {
                     Literal::Identifier(i) => self.literals.get(i).unwrap(),
                     _ => panic!(),
                 };
-                let msg = format!("reference to undefined symbol `{}`", sym);
+                let msg = format!("reference to undefined identifier `{}`", sym);
                 (msg, line, s.span.line, s.span.col, s.span.len)
             }
         };

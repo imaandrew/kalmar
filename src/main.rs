@@ -68,7 +68,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         Ok(_) => (),
         Err(e) => {
             let ep = ErrorPrinter::new(fname, c.literals());
-            ep.print(&e)?;
+            for e in e {
+                let _ = ep.print(&e);
+            }
             exit(1);
         }
     }

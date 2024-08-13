@@ -244,10 +244,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
 
         for (t, a) in &self.unresolved_syms {
             let s = match t.val.unwrap() {
-                Literal::Identifier(s) => self
-                    .syms
-                    .get(self.literals.get(s).unwrap())
-                    .ok_or(KalmarError::UndefinedSymbol(**t))?,
+                Literal::Identifier(s) => self.syms.get(self.literals.get(s).unwrap()).unwrap(),
                 _ => unreachable!(),
             };
             self.code[*a as usize] = *s;
@@ -267,13 +264,15 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         }
 
         match stmt {
-            Stmt::Script(Token { val: Some(l), .. }, s) => {
-                let l = match l {
-                    Literal::Identifier(i) => i,
-                    _ => unreachable!(),
-                };
+            Stmt::Script(
+                Token {
+                    val: Some(Literal::Identifier(i)),
+                    ..
+                },
+                s,
+            ) => {
                 self.syms.insert(
-                    self.literals.get(*l).unwrap(),
+                    self.literals.get(*i).unwrap(),
                     4 * self.code.len() as u32 + self.base_addr,
                 );
                 self.compile_stmt(s)?;
@@ -287,22 +286,23 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
             Stmt::Return => {
                 add_op!(Return);
             }
-            Stmt::Label(Token { val: Some(n), .. }) => {
-                let lbl = match n {
-                    Literal::Identifier(i) => i,
-                    _ => unreachable!(),
-                };
+            Stmt::Label(Token {
+                val: Some(Literal::Identifier(i)),
+                ..
+            }) => {
                 self.syms
-                    .insert(self.literals.get(*lbl).unwrap(), self.num_labels);
+                    .insert(self.literals.get(*i).unwrap(), self.num_labels);
                 add_op!(Label);
                 self.code.push(self.num_labels);
                 self.num_labels += 1;
             }
-            Stmt::Goto(t @ Token { val: Some(n), .. }) => {
-                let lbl = match n {
-                    Literal::Identifier(i) => self.literals.get(*i).unwrap(),
-                    _ => unreachable!(),
-                };
+            Stmt::Goto(
+                t @ Token {
+                    val: Some(Literal::Identifier(i)),
+                    ..
+                },
+            ) => {
+                let lbl = self.literals.get(*i).unwrap();
                 add_op!(Goto);
                 self.code.push(*self.syms.get(lbl).unwrap_or_else(|| {
                     self.unresolved_syms.push((t, self.code.len() as u32));
@@ -427,15 +427,15 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 self.compile_stmt(s)?;
                 add_op!(EndChildThread);
             }
-            Stmt::Jump(Token { val: Some(i), .. }) => {
+            Stmt::Jump(Token {
+                val: Some(Literal::Identifier(i)),
+                ..
+            }) => {
                 add_op!(Jump);
-                self.code.push(match i {
-                    Literal::Number(n) => n.as_u32(),
-                    _ => todo!(),
-                });
+                self.code.push(i.0);
             }
             Stmt::Empty => (),
-            _ => unreachable!(),
+            e => unreachable!("{:?}", e),
         }
 
         Ok(())
@@ -569,34 +569,28 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
                 BinOp::Assign => match &r.kind {
-                    ExprKind::Identifier(token)
-                        if matches!(
-                            token,
-                            Token {
-                                val: Some(Literal::Number(_)),
-                                ..
-                            }
-                        ) =>
-                    {
-                        if let Literal::Number(n) = token.val.unwrap() {
-                            if n.is_float() {
-                                add_op!(SetF);
-                            } else {
-                                add_op!(Set);
-                            }
-                            self.compile_expr(l)?;
-                            self.compile_expr(r)?;
+                    ExprKind::Identifier(Token {
+                        val: Some(Literal::Number(n)),
+                        ..
+                    }) => {
+                        if n.is_float() {
+                            add_op!(SetF);
+                        } else {
+                            add_op!(Set);
                         }
+                        self.compile_expr(l)?;
+                        self.compile_expr(r)?;
                     }
-                    ExprKind::Identifier(i) if matches!(i.val.unwrap(), Literal::Identifier(_)) => {
-                        if let Literal::Identifier(i) = i.val.unwrap() {
-                            match self.literals.get(i).unwrap() {
-                                "Buffer" => add_op!(BufPeek),
-                                "FBuffer" => add_op!(FBufPeek),
-                                _ => panic!(),
-                            }
-                            self.compile_expr(l)?;
+                    ExprKind::Identifier(Token {
+                        val: Some(Literal::Identifier(i)),
+                        ..
+                    }) => {
+                        match self.literals.get(*i).unwrap() {
+                            "Buffer" => add_op!(BufPeek),
+                            "FBuffer" => add_op!(FBufPeek),
+                            _ => panic!(),
                         }
+                        self.compile_expr(l)?;
                     }
                     ExprKind::Array(_, _) => {
                         add_op!(Set);
@@ -608,18 +602,20 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                         self.compile_expr(l)?;
                         self.compile_expr(r)?;
                     }
-                    ExprKind::FuncCall(i, a)
-                        if matches!(i.val.unwrap(), Literal::Identifier(_)) =>
-                    {
-                        if let Literal::Identifier(s) = i.val.unwrap() {
-                            let f = self.get_func(self.literals.get(s).unwrap(), true).unwrap();
-                            self.code.push(f.0);
-                            self.code.push(f.1 as u32);
-                            for arg in a {
-                                self.compile_expr(arg)?;
-                            }
-                            self.compile_expr(l)?;
+                    ExprKind::FuncCall(
+                        Token {
+                            val: Some(Literal::Identifier(s)),
+                            ..
+                        },
+                        a,
+                    ) => {
+                        let f = self.get_func(self.literals.get(*s).unwrap(), true).unwrap();
+                        self.code.push(f.0);
+                        self.code.push(f.1 as u32);
+                        for arg in a {
+                            self.compile_expr(arg)?;
                         }
+                        self.compile_expr(l)?;
                     }
                     e => panic!("{:?}", e),
                 },
@@ -701,11 +697,14 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     self.compile_expr(r)?;
                 }
             },
-            ExprKind::Array(ident, index) => {
-                let ident = match ident.val.unwrap() {
-                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
-                    _ => unreachable!(),
-                };
+            ExprKind::Array(
+                Token {
+                    val: Some(Literal::Identifier(i)),
+                    ..
+                },
+                index,
+            ) => {
+                let ident = self.literals.get(*i).unwrap();
 
                 let index = match index.kind.get_literal() {
                     Some(Literal::Number(n)) => n.as_u32(),
@@ -714,13 +713,16 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
 
                 self.code.push(get_var(ident, index));
             }
-            ExprKind::FuncCall(func, args) => {
-                let addr = match func.val.unwrap() {
-                    Literal::Identifier(i) => self
-                        .get_func(self.literals.get(i).unwrap(), false)
-                        .ok_or(KalmarError::UndefinedFunction(*func))?,
-                    _ => unreachable!(),
-                };
+            ExprKind::FuncCall(
+                func @ Token {
+                    val: Some(Literal::Identifier(i)),
+                    ..
+                },
+                args,
+            ) => {
+                let addr = self
+                    .get_func(self.literals.get(*i).unwrap(), false)
+                    .ok_or(KalmarError::UndefinedFunction(*func))?;
                 if addr.1 == -1 {
                     self.code.push(Op::Call as u32);
                     self.code.push(args.len() as u32 + 1);
@@ -736,11 +738,14 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                     }
                 }
             }
-            ExprKind::ArrayAssign(ident, expr) => {
-                let ident = match ident.val.unwrap() {
-                    Literal::Identifier(i) => self.literals.get(i).unwrap(),
-                    _ => unreachable!(),
-                };
+            ExprKind::ArrayAssign(
+                Token {
+                    val: Some(Literal::Identifier(i)),
+                    ..
+                },
+                expr,
+            ) => {
+                let ident = self.literals.get(*i).unwrap();
 
                 match ident {
                     "Buffer" => add_op!(UseBuf),
@@ -754,6 +759,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
             ExprKind::Default => {
                 add_op!(CaseDefault);
             }
+            _ => unreachable!(),
         }
 
         Ok(())
