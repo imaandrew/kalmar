@@ -200,7 +200,15 @@ impl<'a> SemChecker<'a> {
             }
             Stmt::Case(e, s) => {
                 let t = self.check_expr_node(e);
-                self.push_err(assert_types!(t, e.span, Type::Case, Type::Case));
+                self.push_err(assert_types!(
+                    t,
+                    e.span,
+                    Type::Case | Type::Integer | Type::Var | Type::Range,
+                    Type::Case,
+                    Type::Integer,
+                    Type::Var,
+                    Type::Range
+                ));
                 self.check_stmt_node(s);
             }
             Stmt::Return | Stmt::BreakCase | Stmt::BreakLoop | Stmt::Empty => (),
@@ -444,11 +452,31 @@ impl<'a> SemChecker<'a> {
                 self.push_err(assert_types!(
                     r_type,
                     rhs.span,
-                    Type::Integer | Type::Float | Type::Var,
+                    Type::Integer | Type::Float | Type::Var | Type::Identifier,
                     Type::Integer,
                     Type::Float,
-                    Type::Var
+                    Type::Var,
+                    Type::Identifier
                 ));
+
+                if r_type.unwrap() == Type::Identifier {
+                    if let Expr {
+                        kind:
+                            ExprKind::Identifier(
+                                t @ Token {
+                                    val: Some(Literal::Identifier(i)),
+                                    ..
+                                },
+                            ),
+                        ..
+                    } = rhs
+                    {
+                        let val = self.literals.get(*i).unwrap();
+                        if val != "Buffer" && val != "FBuffer" {
+                            self.errors.push(KalmarError::InvalidAssign(*t));
+                        }
+                    }
+                }
                 Some(Type::Assign)
             }
             BinOp::Range => {

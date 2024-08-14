@@ -94,12 +94,5 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         }
     }
 
-    /*
-    let r: Vec<u8> = std::fs::read(cli.output.unwrap())?;
-    let s = decompiler::decompile_script(&r).unwrap();
-
-    println!("{}", s);
-    */
-
     Ok(())
 }
