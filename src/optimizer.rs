@@ -7,7 +7,6 @@ use crate::{
 pub fn optimize_stmts(stmts: &mut [Stmt]) {
     for stmt in stmts {
         collapse_stmt(stmt);
-        fold_redundant_blocks(stmt);
     }
 }
 
@@ -43,38 +42,6 @@ fn collapse_stmt(stmt: &mut Stmt) {
         Stmt::Case(e, s) => {
             fold_expr_op(e);
             collapse_stmt(s);
-        }
-        _ => (),
-    }
-}
-
-fn fold_redundant_blocks(stmt: &mut Stmt) {
-    match stmt {
-        Stmt::Script(_, s)
-        | Stmt::Loop(_, s)
-        | Stmt::If(_, s)
-        | Stmt::Else(Some(s), None)
-        | Stmt::Else(None, Some(s))
-        | Stmt::Thread(s)
-        | Stmt::ChildThread(s)
-        | Stmt::Switch(_, s)
-        | Stmt::Case(_, s) => fold_redundant_blocks(s),
-        Stmt::Block(s) => {
-            for i in 0..s.len() {
-                let ss = s.get_mut(i).unwrap();
-                fold_redundant_blocks(ss);
-                if let Stmt::Block(ss) = ss {
-                    let mut ss = std::mem::take(ss);
-                    s.remove(i);
-                    s.append(&mut ss);
-                }
-            }
-        }
-        Stmt::IfElse(i, e) => {
-            fold_redundant_blocks(i);
-            for i in e {
-                fold_redundant_blocks(i);
-            }
         }
         _ => (),
     }
@@ -119,13 +86,7 @@ fn fold_expr_op(expr: &mut Expr) {
         Star, *, Number,
         Div, /, Number,
         Mod, %, Number,
-        BitAnd, &, Number,
-        Equal, ==, Boolean,
-        NotEqual, !=, Boolean,
-        Greater, >, Boolean,
-        GreaterEq, >=, Boolean,
-        Less, <, Boolean,
-        LessEq, <=, Boolean
+        BitAnd, &, Number
     );
 
     match &mut expr.kind {
