@@ -86,7 +86,9 @@ fn fold_expr_op(expr: &mut Expr) {
         Star, *, Number,
         Div, /, Number,
         Mod, %, Number,
-        BitAnd, &, Number
+        BitAnd, &, Number,
+        LShift, <<, Number,
+        RShift, >>, Number
     );
 
     match &mut expr.kind {

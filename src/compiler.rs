@@ -654,7 +654,9 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
                 | BinOp::Star
                 | BinOp::Div
                 | BinOp::Mod
-                | BinOp::BitOr => {
+                | BinOp::BitOr
+                | BinOp::LShift
+                | BinOp::RShift => {
                     unreachable!()
                 }
                 BinOp::Arrow => {

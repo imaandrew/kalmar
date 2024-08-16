@@ -223,6 +223,10 @@ pub enum BinOp {
     Arrow,
     #[strum(serialize = ",")]
     Comma,
+    #[strum(serialize = "<<")]
+    LShift,
+    #[strum(serialize = ">>")]
+    RShift,
 }
 
 impl TryFrom<Token> for BinOp {
@@ -254,6 +258,8 @@ impl TryFrom<Token> for BinOp {
             TokenKind::Eq => Ok(Self::Assign),
             TokenKind::Comma => Ok(Self::Comma),
             TokenKind::Arrow => Ok(Self::Arrow),
+            TokenKind::LShift => Ok(Self::LShift),
+            TokenKind::RShift => Ok(Self::RShift),
             _ => Err(KalmarError::InvalidOperator("binary", t)),
         }
     }
@@ -262,9 +268,10 @@ impl TryFrom<Token> for BinOp {
 impl BinOp {
     fn precedence(&self) -> (u8, u8) {
         match self {
-            Self::Range | Self::Comma => (90, 91),
-            Self::Star | Self::Div | Self::Mod => (80, 81),
-            Self::Plus | Self::Minus => (70, 71),
+            Self::Range | Self::Comma => (100, 101),
+            Self::Star | Self::Div | Self::Mod => (90, 91),
+            Self::Plus | Self::Minus => (80, 81),
+            Self::LShift | Self::RShift => (70, 71),
             Self::Greater | Self::GreaterEq | Self::Less | Self::LessEq => (60, 61),
             Self::Equal | Self::NotEqual => (50, 51),
             Self::BitAnd => (40, 41),

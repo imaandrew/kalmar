@@ -1,5 +1,5 @@
 use std::{
-    ops::{Add, BitAnd, Div, Mul, Neg, Rem, Sub},
+    ops::{Add, BitAnd, Div, Mul, Neg, Rem, Sub, Shl, Shr},
     str::FromStr,
 };
 
@@ -121,7 +121,10 @@ pub enum TokenKind {
     Range,
     #[strum(serialize = "<-")]
     Arrow,
-    #[strum(disabled)]
+    #[strum(serialize = "<<")]
+    LShift,
+    #[strum(serialize = ">>")]
+    RShift,
     Number,
     Newline,
     #[strum(disabled)]
@@ -197,7 +200,7 @@ macro_rules! int_ops {
     };
 }
 
-int_ops! { Rem rem %, BitAnd bitand & }
+int_ops! { Rem rem %, BitAnd bitand &, Shl shl <<, Shr shr >> }
 
 impl Neg for Number {
     type Output = Number;

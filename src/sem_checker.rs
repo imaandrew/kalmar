@@ -346,7 +346,7 @@ impl<'a> SemChecker<'a> {
                     l_type
                 }
             }
-            BinOp::Mod | BinOp::BitOr => {
+            BinOp::Mod | BinOp::BitOr | BinOp::LShift | BinOp::RShift => {
                 let l_err = self.push_err(assert_types!(
                     l_type,
                     lhs.span,
