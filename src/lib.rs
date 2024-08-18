@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 pub use error::ErrorPrinter;
 use error::{DecompilerError, KalmarError};
 use indexmap::IndexSet;
@@ -12,8 +14,8 @@ mod optimizer;
 mod parser;
 mod sem_checker;
 
-fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, ()> {
-    let mut v = vec![];
+fn parse_syms(s: &str) -> Result<HashMap<&str, u32>, ()> {
+    let mut v = HashMap::new();
     for line in s.lines() {
         let mut l = line.split('=');
         let sym = l.next().unwrap().trim();
@@ -25,7 +27,9 @@ fn parse_syms(s: &str) -> Result<Vec<(&str, u32)>, ()> {
         };
 
         match num {
-            Ok(n) => v.push((sym, n)),
+            Ok(n) => {
+                v.insert(sym, n);
+            }
             Err(_) => eprintln!("Invalid symbol file line: {}", line),
         }
     }
@@ -131,7 +135,7 @@ pub struct Compiler<'a> {
     verbose: bool,
     literals: StringManager<'a>,
     base_addr: u32,
-    syms: Vec<(&'a str, u32)>,
+    syms: HashMap<&'a str, u32>,
 }
 
 impl<'a> Compiler<'a> {
@@ -146,7 +150,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn sem_check(&mut self, stmts: &[Stmt]) -> Result<(), Vec<KalmarError>> {
-        let mut sem = sem_checker::SemChecker::new(&mut self.literals);
+        let mut sem = sem_checker::SemChecker::new(&mut self.literals, &self.syms);
         sem.check_ast(stmts)
     }
 
@@ -222,7 +226,7 @@ pub struct Decompiler<'a> {
     input: &'a [u8],
     stmts: Vec<Stmt>,
     base_addr: u32,
-    syms: Vec<(&'a str, u32)>,
+    syms: HashMap<&'a str, u32>,
 }
 
 impl<'a> Decompiler<'a> {

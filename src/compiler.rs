@@ -233,7 +233,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
         }
     }
 
-    pub fn add_syms(&mut self, syms: Vec<(&'cmplr str, u32)>) {
+    pub fn add_syms(&mut self, syms: HashMap<&'cmplr str, u32>) {
         self.syms.extend(syms)
     }
 
@@ -724,7 +724,7 @@ impl<'cmplr, 'smgr> Compiler<'cmplr, 'smgr> {
             ) => {
                 let addr = self
                     .get_func(self.literals.get(*i).unwrap(), false)
-                    .ok_or(KalmarError::UndefinedFunction(*func))?;
+                    .unwrap();
                 if addr.1 == -1 {
                     self.code.push(Op::Call as u32);
                     self.code.push(args.len() as u32 + 1);

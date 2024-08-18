@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use strum_macros::Display;
 
 use crate::{
@@ -43,10 +45,11 @@ pub struct SemChecker<'a> {
     referenced_labels: Vec<Token>,
     literals: &'a StringManager<'a>,
     errors: Vec<KalmarError>,
+    syms: &'a HashMap<&'a str, u32>,
 }
 
 impl<'a> SemChecker<'a> {
-    pub fn new(literals: &'a mut StringManager) -> Self {
+    pub fn new(literals: &'a mut StringManager, syms: &'a HashMap<&'a str, u32>) -> Self {
         Self {
             declared_scripts: vec![],
             referenced_scripts: vec![],
@@ -54,6 +57,7 @@ impl<'a> SemChecker<'a> {
             referenced_labels: vec![],
             literals,
             errors: vec![],
+            syms,
         }
     }
 }
@@ -241,7 +245,16 @@ impl<'a> SemChecker<'a> {
             }
             ExprKind::UnOp(op, expr) => self.check_unop_type(op, expr)?,
             ExprKind::BinOp(op, lhs, rhs) => self.check_binop_type(op, lhs, rhs)?,
-            ExprKind::FuncCall(_, args) => {
+            ExprKind::FuncCall(
+                func @ Token {
+                    val: Some(Literal::Identifier(i)),
+                    ..
+                },
+                args,
+            ) => {
+                if !self.syms.contains_key(self.literals.get(*i).unwrap()) {
+                    self.errors.push(KalmarError::UndefinedFunction(*func));
+                }
                 for e in args {
                     self.check_expr_node(e)?;
                 }
@@ -259,6 +272,7 @@ impl<'a> SemChecker<'a> {
                 Type::Assign
             }
             ExprKind::Default => Type::Case,
+            _ => unreachable!(),
         })
     }
 
