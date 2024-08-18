@@ -1,5 +1,5 @@
 use std::{
-    ops::{Add, BitAnd, Div, Mul, Neg, Rem, Sub, Shl, Shr},
+    ops::{Add, BitAnd, Div, Mul, Neg, Rem, Shl, Shr, Sub},
     str::FromStr,
 };
 
@@ -325,7 +325,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 'b' => {
                     base = 2;
                     self.next();
-                    start += 1;
+                    start += 2;
                     if !self.consume_decimal_digits() {
                         let idx = self
                             .literals
@@ -341,7 +341,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 'o' => {
                     base = 8;
                     self.next();
-                    start += 1;
+                    start += 2;
                     if !self.consume_decimal_digits() {
                         let idx = self
                             .literals
@@ -357,7 +357,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
                 'x' => {
                     base = 16;
                     self.next();
-                    start += 1;
+                    start += 2;
                     if !self.consume_hex_digits() {
                         let idx = self
                             .literals
@@ -402,7 +402,8 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
             TokenKind::Number,
             start,
             Some(Literal::Number(Number::Int(
-                u32::from_str_radix(&self.literals.text[start..self.curr], base).unwrap(),
+                u32::from_str_radix(&self.literals.text[start..self.curr], base)
+                    .unwrap_or_else(|_| panic!("{}", &self.literals.text[start..self.curr])),
             ))),
         ))
     }
@@ -428,7 +429,7 @@ impl<'lexr, 'smgr> Lexer<'lexr, 'smgr> {
     fn identifier(&mut self) -> Result<Token, KalmarError> {
         let start = self.curr - 1;
 
-        while self.peek().is_alphabetic() || self.peek() == '_' {
+        while self.peek().is_alphanumeric() || self.peek() == '_' {
             self.next();
         }
 
